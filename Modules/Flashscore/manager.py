@@ -162,7 +162,7 @@ async def run_flashscore_analysis(playwright: Playwright, refresh: bool = False,
                 # --- Save to DB & Filter ---
                 valid_matches = []
                 now_time = dt.now(NIGERIA_TZ).time()
-                is_today = target_date.date() == dt.now(NIGERIA_TZ).date()
+                is_today = target_dt.date() == dt.now(NIGERIA_TZ).date()
 
                 def is_time_parsable(t_str):
                     try:
@@ -441,7 +441,7 @@ async def run_flashscore_schedule_only(playwright: Playwright, refresh: bool = F
                 print(f"  [Deep] Completed: {total_deep} matches analyzed and predicted for {target_full}.")
 
                 # Return to Flashscore home for the next day's navigation
-                if day_offset < days - 1:
+                if current_day_offset < days - 1:
                     await page.goto("https://www.flashscore.com/football/", wait_until="domcontentloaded", timeout=NAVIGATION_TIMEOUT)
                     await asyncio.sleep(2)
                     await fs_universal_popup_dismissal(page, "fs_home_page")

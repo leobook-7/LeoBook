@@ -1,5 +1,4 @@
 ﻿import asyncio
-import csv
 import os
 import json
 import time
@@ -11,7 +10,11 @@ from collections import defaultdict
 from Core.Intelligence.aigo_suite import AIGOSuite
 from supabase import create_client
 from dotenv import load_dotenv
-from Data.Access.db_helpers import CSV_LOCK, _read_csv, _write_csv
+from Data.Access.db_helpers import _get_conn, save_team_entry, save_region_league_entry
+from Data.Access.league_db import query_all
+
+# CSV_LOCK replaced — SQLite WAL handles concurrency
+CSV_LOCK = asyncio.Lock()
 
 # Load environment variables
 load_dotenv()
@@ -19,9 +22,7 @@ load_dotenv()
 # ================================================
 # Configuration
 # ================================================
-CSV_FILE = os.path.join("Data", "Store", "schedules.csv")
-TEAMS_CSV = os.path.join("Data", "Store", "teams.csv")
-REGION_LEAGUE_CSV = os.path.join("Data", "Store", "region_league.csv")
+# Legacy CSV paths removed — all reads from SQLite now
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
@@ -300,63 +301,24 @@ def batch_upsert(table_name: str, data: list, chunk_size: int = 1000):
                     except Exception as e2:
                         print(f"  [Error] Individual upsert failed: {e2}")
 
-def update_csv_file_under_lock(file_path, data_map, key_field, headers):
-    """Wait, this should be synchronous logic since we'll wrap the call in a lock."""
-    temp_file = file_path + ".tmp"
-    updated_count = 0
-    new_count = 0
-    seen_keys = set()
-    
-    with open(file_path, mode='r', encoding='utf-8', newline='') as infile, \
-         open(temp_file, mode='w', encoding='utf-8', newline='') as outfile:
-        
-        reader = csv.DictReader(infile)
-        fieldnames = list(reader.fieldnames)
-        
-        # Ensure new columns exist in header
-        for h in headers:
-            if h not in fieldnames:
-                fieldnames.append(h)
-        
-        writer = csv.DictWriter(outfile, fieldnames=fieldnames)
-        writer.writeheader()
-        
-        for row in reader:
-            key = row.get(key_field)
-            if key and key in data_map:
-                update_data = data_map[key]
-                for k, v in update_data.items():
-                    if k in fieldnames:
-                         # Handle list serialization for CSV if needed (e.g. JSON string)
-                        if isinstance(v, (list, dict)):
-                            row[k] = json.dumps(v)
-                        else:
-                            row[k] = v
-                updated_count += 1
-                seen_keys.add(key)
-            writer.writerow(row)
-        
-        # Append new rows
-        for key, data in data_map.items():
-            if key not in seen_keys:
-                new_row = {k: '' for k in fieldnames} # Default empty
-                # Fill known fields
-                for k, v in data.items():
-                    if k in fieldnames:
-                        if isinstance(v, (list, dict)):
-                            new_row[k] = json.dumps(v)
-                        else:
-                            new_row[k] = v
-                
-                # Ensure key field is set
-                if key_field not in new_row or not new_row[key_field]:
-                     new_row[key_field] = key
+def update_db_under_lock(data_map, key_field, table_type="team"):
+    """Upsert enrichment data into SQLite tables."""
+    count = 0
+    for key, data in data_map.items():
+        # Serialize lists/dicts to JSON strings for SQLite TEXT columns
+        serialized = {}
+        for k, v in data.items():
+            if isinstance(v, (list, dict)):
+                serialized[k] = json.dumps(v)
+            else:
+                serialized[k] = v
 
-                writer.writerow(new_row)
-                new_count += 1
-            
-    os.replace(temp_file, file_path)
-    print(f"Updated {updated_count} rows and added {new_count} new rows in {file_path}")
+        if table_type == "team":
+            save_team_entry(serialized)
+        else:
+            save_region_league_entry(serialized)
+        count += 1
+    print(f"Upserted {count} {table_type} rows into SQLite")
 
 def find_best_match_league(input_name: str, country: str, existing_leagues: dict):
     """
@@ -399,27 +361,28 @@ def find_best_match_league(input_name: str, country: str, existing_leagues: dict
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=2.0, use_aigo=False)
 async def main():
-    if not os.path.exists(CSV_FILE):
-        print(f"Error: {CSV_FILE} not found.")
-        return
+    conn = _get_conn()
 
     leagues_raw = set()
     teams_raw = defaultdict(lambda: {"id": None, "names": set()})
 
-    print(f"Reading {CSV_FILE} and collecting unique teams/leagues...")
-    async with CSV_LOCK:
-        with open(CSV_FILE, mode='r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                rl = (row.get("region_league") or "Unknown").strip()
-                leagues_raw.add(rl)
-                for prefix in ["home_", "away_"]:
-                    tname = (row.get(prefix + "team") or "").strip()
-                    tid = (row.get(prefix + "team_id") or "").strip()
-                    if not tname or not tid:
-                        continue
-                    teams_raw[tid]["id"] = tid
-                    teams_raw[tid]["names"].add(tname)
+    print(f"Reading fixtures from SQLite and collecting unique teams/leagues...")
+    fixtures = query_all(conn, 'fixtures')
+    if not fixtures:
+        print("Error: No fixtures found in database.")
+        return
+
+    for row in fixtures:
+        rl = (row.get("region_league") or "Unknown").strip()
+        leagues_raw.add(rl)
+        for prefix in ["home_team", "away_team"]:
+            # fixtures table uses home_team_name/away_team_name or home_team/away_team
+            tname = (row.get(prefix + "_name") or row.get(prefix) or "").strip()
+            tid = (row.get(prefix.replace('team', 'team_id')) or row.get(prefix + "_id") or "").strip()
+            if not tname or not tid:
+                continue
+            teams_raw[tid]["id"] = tid
+            teams_raw[tid]["names"].add(tname)
 
     print(f"Found {len(leagues_raw)} unique league keys")
     print(f"Found {len(teams_raw)} unique teams (by ID)")
@@ -427,34 +390,31 @@ async def main():
     fully_enriched_team_ids = set()
     incomplete_team_ids = set()
     TEAM_CRITICAL_FIELDS = ['abbreviations', 'city']
-    
-    async with CSV_LOCK:
-        if os.path.exists(TEAMS_CSV):
-            with open(TEAMS_CSV, mode='r', encoding='utf-8') as f:
-                for row in csv.DictReader(f):
-                    st = row.get('search_terms', '').strip()
-                    tid = row.get('team_id', '').strip()
-                    if not tid: continue
-                    if st and st != '[]':
-                        missing = [fld for fld in TEAM_CRITICAL_FIELDS if is_field_empty(row.get(fld, ''))]
-                        if missing: incomplete_team_ids.add(tid)
-                        else: fully_enriched_team_ids.add(tid)
 
-        existing_leagues = {}
-        fully_enriched_league_keys = set()
-        incomplete_league_keys = set()
-        LEAGUE_CRITICAL_FIELDS = ['abbreviations']
-        if os.path.exists(REGION_LEAGUE_CSV):
-            with open(REGION_LEAGUE_CSV, mode='r', encoding='utf-8') as f:
-                for row in csv.DictReader(f):
-                    league_id = row.get("league_id", "").strip()
-                    if not league_id: continue
-                    existing_leagues[league_id] = row
-                    st = row.get('search_terms', '').strip()
-                    if st and st != '[]':
-                        missing = [fld for fld in LEAGUE_CRITICAL_FIELDS if is_field_empty(row.get(fld, ''))]
-                        if missing: incomplete_league_keys.add(league_id)
-                        else: fully_enriched_league_keys.add(league_id)
+    teams_data = query_all(conn, 'teams')
+    for row in teams_data:
+        st = str(row.get('search_terms', '')).strip()
+        tid = str(row.get('team_id', '')).strip()
+        if not tid: continue
+        if st and st != '[]':
+            missing = [fld for fld in TEAM_CRITICAL_FIELDS if is_field_empty(str(row.get(fld, '')))]
+            if missing: incomplete_team_ids.add(tid)
+            else: fully_enriched_team_ids.add(tid)
+
+    existing_leagues = {}
+    fully_enriched_league_keys = set()
+    incomplete_league_keys = set()
+    LEAGUE_CRITICAL_FIELDS = ['abbreviations']
+    leagues_data = query_all(conn, 'leagues')
+    for row in leagues_data:
+        league_id = str(row.get('league_id', '')).strip()
+        if not league_id: continue
+        existing_leagues[league_id] = dict(row)
+        st = str(row.get('search_terms', '')).strip()
+        if st and st != '[]':
+            missing = [fld for fld in LEAGUE_CRITICAL_FIELDS if is_field_empty(str(row.get(fld, '')))]
+            if missing: incomplete_league_keys.add(league_id)
+            else: fully_enriched_league_keys.add(league_id)
 
     raw_to_rlid = {}
     for raw_name in leagues_raw:
@@ -504,8 +464,7 @@ async def main():
             if updates:
                 print(f"  [Supabase] Upserting {len(updates)} leagues...")
                 batch_upsert("region_league", list(updates.values()))
-                async with CSV_LOCK:
-                    update_csv_file_under_lock(REGION_LEAGUE_CSV, updates, "league_id", ["league", "other_names", "abbreviations", "search_terms"])
+                update_db_under_lock(updates, "league_id", "league")
             await asyncio.sleep(SLEEP_BETWEEN_BATCHES)
 
     # --- Process Teams ---
@@ -546,8 +505,7 @@ async def main():
             if updates:
                 print(f"  [Supabase] Upserting {len(updates)} teams...")
                 batch_upsert("teams", list(updates.values()))
-                async with CSV_LOCK:
-                    update_csv_file_under_lock(TEAMS_CSV, updates, "team_id", ["team_name", "other_names", "abbreviations", "search_terms", "country", "city", "stadium"])
+                update_db_under_lock(updates, "team_id", "team")
             await asyncio.sleep(SLEEP_BETWEEN_BATCHES)
 
     print("\nSearch dictionary built and local CSVs/Supabase synced!")
@@ -571,38 +529,33 @@ async def enrich_match_search_dict(
     team_id_map = {}  # name -> id
 
     # --- Check what needs enrichment ---
-    async with CSV_LOCK:
-        # Check teams
-        if os.path.exists(TEAMS_CSV):
-            teams_data = _read_csv(TEAMS_CSV)
-            for tid, tname in [(home_id, home_team), (away_id, away_team)]:
-                if not tid or not tname:
-                    continue
-                found = False
-                for row in teams_data:
-                    if row.get('team_id') == tid:
-                        st = (row.get('search_terms') or '').strip()
-                        abbr = (row.get('abbreviations') or '').strip()
-                        if st and st != '[]' and abbr and abbr != '[]':
-                            found = True  # Already enriched
-                        break
-                if not found:
-                    items_to_enrich_team.append(tname)
-                    team_id_map[tname] = tid
+    conn = _get_conn()
+    # Check teams
+    for tid, tname in [(home_id, home_team), (away_id, away_team)]:
+        if not tid or not tname:
+            continue
+        row = conn.execute("SELECT search_terms, abbreviations FROM teams WHERE team_id = ?", (tid,)).fetchone()
+        found = False
+        if row:
+            st = str(row['search_terms'] or '').strip()
+            abbr = str(row['abbreviations'] or '').strip()
+            if st and st != '[]' and abbr and abbr != '[]':
+                found = True
+        if not found:
+            items_to_enrich_team.append(tname)
+            team_id_map[tname] = tid
 
-        # Check league
-        if os.path.exists(REGION_LEAGUE_CSV) and league_id:
-            leagues_data = _read_csv(REGION_LEAGUE_CSV)
-            league_enriched = False
-            for row in leagues_data:
-                if row.get('league_id') == league_id:
-                    st = (row.get('search_terms') or '').strip()
-                    abbr = (row.get('abbreviations') or '').strip()
-                    if st and st != '[]' and abbr and abbr != '[]':
-                        league_enriched = True
-                    break
-            if not league_enriched and league_name:
-                items_to_enrich_league.append(league_name)
+    # Check league
+    if league_id:
+        row = conn.execute("SELECT search_terms, abbreviations FROM leagues WHERE league_id = ?", (league_id,)).fetchone()
+        league_enriched = False
+        if row:
+            st = str(row['search_terms'] or '').strip()
+            abbr = str(row['abbreviations'] or '').strip()
+            if st and st != '[]' and abbr and abbr != '[]':
+                league_enriched = True
+        if not league_enriched and league_name:
+            items_to_enrich_league.append(league_name)
 
     if not items_to_enrich_team and not items_to_enrich_league:
         return  # Nothing to do
@@ -643,10 +596,8 @@ async def enrich_match_search_dict(
 
             if updates:
                 batch_upsert("teams", list(updates.values()))
-                async with CSV_LOCK:
-                    update_csv_file_under_lock(TEAMS_CSV, updates, "team_id",
-                        ["team_name", "other_names", "abbreviations", "search_terms", "country", "city", "stadium"])
-                print(f"    [SearchDict] ✓ {len(updates)} teams enriched")
+                update_db_under_lock(updates, "team_id", "team")
+                print(f"    [SearchDict] {len(updates)} teams enriched")
         except Exception as e:
             print(f"    [SearchDict] Team enrichment error (non-fatal): {e}")
 
@@ -675,10 +626,8 @@ async def enrich_match_search_dict(
 
             if updates:
                 batch_upsert("region_league", list(updates.values()))
-                async with CSV_LOCK:
-                    update_csv_file_under_lock(REGION_LEAGUE_CSV, updates, "league_id",
-                        ["league", "other_names", "abbreviations", "search_terms"])
-                print(f"    [SearchDict] ✓ League '{league_name}' enriched")
+                update_db_under_lock(updates, "league_id", "league")
+                print(f"    [SearchDict] League '{league_name}' enriched")
         except Exception as e:
             print(f"    [SearchDict] League enrichment error (non-fatal): {e}")
 
@@ -696,21 +645,20 @@ async def enrich_batch_teams_search_dict(team_pairs: list, batch_size: int = 10)
 
     # 1. Filter out already-enriched teams
     unenriched = []
-    async with CSV_LOCK:
-        if os.path.exists(TEAMS_CSV):
-            teams_data = _read_csv(TEAMS_CSV)
-            enriched_ids = set()
-            for row in teams_data:
-                st = (row.get('search_terms') or '').strip()
-                abbr = (row.get('abbreviations') or '').strip()
-                if st and st != '[]' and abbr and abbr != '[]':
-                    enriched_ids.add(row.get('team_id', ''))
+    conn = _get_conn()
+    teams_data = query_all(conn, 'teams')
+    enriched_ids = set()
+    for row in teams_data:
+        st = str(row.get('search_terms', '') or '').strip()
+        abbr = str(row.get('abbreviations', '') or '').strip()
+        if st and st != '[]' and abbr and abbr != '[]':
+            enriched_ids.add(str(row.get('team_id', '')))
 
-            for tp in team_pairs:
-                tid = tp.get('team_id') or tp.get('id', '')
-                tname = tp.get('team_name') or tp.get('name', '')
-                if tid and tname and tid not in enriched_ids:
-                    unenriched.append({'team_id': tid, 'team_name': tname})
+    for tp in team_pairs:
+        tid = tp.get('team_id') or tp.get('id', '')
+        tname = tp.get('team_name') or tp.get('name', '')
+        if tid and tname and tid not in enriched_ids:
+            unenriched.append({'team_id': tid, 'team_name': tname})
 
     if not unenriched:
         return
@@ -778,9 +726,7 @@ async def enrich_batch_teams_search_dict(team_pairs: list, batch_size: int = 10)
 
             if updates:
                 batch_upsert("teams", list(updates.values()))
-                async with CSV_LOCK:
-                    update_csv_file_under_lock(TEAMS_CSV, updates, "team_id",
-                        ["team_name", "other_names", "abbreviations", "search_terms", "country", "city", "stadium"])
+                update_db_under_lock(updates, "team_id", "team")
                 total_enriched += len(updates)
                 print(f"    [SearchDict Batch] ✓ Batch {i // batch_size + 1}: {len(updates)} teams enriched")
 

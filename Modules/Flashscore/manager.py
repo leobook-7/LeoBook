@@ -148,14 +148,14 @@ async def run_flashscore_analysis(playwright: Playwright, refresh: bool = False,
                 matches_data.sort(key=lambda x: x.get('match_time', '23:59'))
 
                 # --- Load existing predictions for robust resume ---
-                from Data.Access.db_helpers import PREDICTIONS_CSV
-                import csv
+                from Data.Access.db_helpers import _get_conn as _get_conn_mgr
+                from Data.Access.league_db import query_all as _query_all_mgr
                 existing_ids = set()
-                if os.path.exists(PREDICTIONS_CSV) and not refresh:
+                if not refresh:
                     try:
-                        with open(PREDICTIONS_CSV, 'r', encoding='utf-8') as f:
-                            reader = csv.DictReader(f)
-                            existing_ids = {row['fixture_id'] for row in reader if row.get('fixture_id')}
+                        _conn = _get_conn_mgr()
+                        _preds = _query_all_mgr(_conn, 'predictions')
+                        existing_ids = {r['fixture_id'] for r in _preds if r.get('fixture_id')}
                     except Exception:
                         pass
 
@@ -206,25 +206,21 @@ async def run_flashscore_analysis(playwright: Playwright, refresh: bool = False,
                 # (One-shot enrichment gate — prevents browser idle death during match processing)
                 try:
                     from Scripts.build_search_dict import enrich_batch_teams_search_dict
-                    from Data.Access.db_helpers import TEAMS_CSV
-                    import csv as _csv
+                    _conn = _get_conn_mgr()
                     unenriched_teams = []
-                    if os.path.exists(TEAMS_CSV):
-                        with open(TEAMS_CSV, 'r', encoding='utf-8') as f:
-                            for row in _csv.DictReader(f):
-                                st = (row.get('search_terms') or '').strip()
-                                abbr = (row.get('abbreviations') or '').strip()
-                                tid = row.get('team_id', '')
-                                tname = row.get('team_name', '')
-                                if tid and tname and (not st or st == '[]' or not abbr or abbr == '[]'):
-                                    unenriched_teams.append({'team_id': tid, 'team_name': tname})
+                    _teams_data = _query_all_mgr(_conn, 'teams')
+                    for row in _teams_data:
+                        st = str(row.get('search_terms', '') or '').strip()
+                        abbr = str(row.get('abbreviations', '') or '').strip()
+                        tid = str(row.get('team_id', ''))
+                        tname = str(row.get('team_name', ''))
+                        if tid and tname and (not st or st == '[]' or not abbr or abbr == '[]'):
+                            unenriched_teams.append({'team_id': tid, 'team_name': tname})
                     if unenriched_teams:
-                        # Cap to prevent gate from blocking on thousands of teams.
-                        # Per-match enrichment handles the rest incrementally.
                         gate_cap = min(len(unenriched_teams), 100)
                         print(f"\n    [SearchDict Gate] Enriching {gate_cap}/{len(unenriched_teams)} unenriched teams before predictions...")
                         await enrich_batch_teams_search_dict(unenriched_teams[:gate_cap])
-                        print(f"    [SearchDict Gate] ✓ Team enrichment complete.")
+                        print(f"    [SearchDict Gate] Team enrichment complete.")
                     else:
                         print(f"    [SearchDict Gate] All teams already enriched.")
                 except Exception as e:
@@ -252,21 +248,19 @@ async def run_flashscore_analysis(playwright: Playwright, refresh: bool = False,
                                 # Retry enrichment for teams that were skipped earlier (LLM was unavailable)
                                 try:
                                     from Core.Intelligence.llm_health_manager import health_manager
-                                    from Data.Access.db_helpers import TEAMS_CSV
                                     if health_manager._gemini_active:
-                                        import csv as _rtcsv
                                         retry_teams = []
-                                        if os.path.exists(TEAMS_CSV):
-                                            with open(TEAMS_CSV, 'r', encoding='utf-8') as f:
-                                                for row in _rtcsv.DictReader(f):
-                                                    st = (row.get('search_terms') or '').strip()
-                                                    abbr = (row.get('abbreviations') or '').strip()
-                                                    tid = row.get('team_id', '')
-                                                    tname = row.get('team_name', '')
-                                                    if tid and tname and (not st or st == '[]' or not abbr or abbr == '[]'):
-                                                        retry_teams.append({'team_id': tid, 'team_name': tname})
+                                        _conn_rt = _get_conn_mgr()
+                                        _rt_data = _query_all_mgr(_conn_rt, 'teams')
+                                        for row in _rt_data:
+                                            st = str(row.get('search_terms', '') or '').strip()
+                                            abbr = str(row.get('abbreviations', '') or '').strip()
+                                            tid = str(row.get('team_id', ''))
+                                            tname = str(row.get('team_name', ''))
+                                            if tid and tname and (not st or st == '[]' or not abbr or abbr == '[]'):
+                                                retry_teams.append({'team_id': tid, 'team_name': tname})
                                         if retry_teams and len(retry_teams) <= 50:
-                                            print(f"    [SearchDict Retry] LLM recovered — enriching {len(retry_teams)} remaining teams...")
+                                            print(f"    [SearchDict Retry] LLM recovered -- enriching {len(retry_teams)} remaining teams...")
                                             await enrich_batch_teams_search_dict(retry_teams)
                                 except Exception:
                                     pass  # Non-fatal

@@ -6,7 +6,7 @@
 from datetime import datetime as dt
 from playwright.async_api import Page
 from Data.Access.db_helpers import (
-    batch_upsert, SCHEDULES_CSV, TEAMS_CSV, files_and_headers
+    save_schedule_batch, save_team_entry, save_region_league_entry
 )
 from Data.Access.sync_manager import SyncManager
 from Modules.Flashscore.fs_extractor import expand_all_leagues, extract_all_matches
@@ -15,7 +15,7 @@ from Modules.Flashscore.fs_extractor import expand_all_leagues, extract_all_matc
 async def extract_matches_from_page(page: Page) -> list:
     """
     Extracts ALL matches from the ALL tab, expands collapsed leagues first.
-    Saves schedule entries + teams locally via batch upsert (single read/write).
+    Saves schedule entries + teams locally via SQLite upsert.
     """
     print("    [Extractor] Extracting match data from ALL tab...")
 
@@ -28,12 +28,11 @@ async def extract_matches_from_page(page: Page) -> list:
     if matches:
         print(f"    [Extractor] Pairings complete. Saving {len(matches)} fixtures, teams and leagues...")
 
-        # Build rows for batch upsert
         now = dt.now().isoformat()
         schedule_rows = []
         team_rows = []
         rl_rows = []
-        
+
         seen_teams = set()
         seen_leagues = set()
 
@@ -57,34 +56,31 @@ async def extract_matches_from_page(page: Page) -> list:
                 'last_updated': now
             })
 
-            # 2. League Data (Region League)
+            # 2. League Data
             rl_name = m.get('region_league', 'Unknown')
             if rl_name not in seen_leagues:
                 seen_leagues.add(rl_name)
                 region = rl_name.split(' - ')[0] if ' - ' in rl_name else 'Unknown'
                 league = rl_name.split(' - ')[1] if ' - ' in rl_name else rl_name
-                
-                # league_id: Use slug from URL if available, else derive from name
+
                 l_url = m.get('league_url', '')
                 league_id = 'unknown'
                 if l_url and '/football/' in l_url:
-                    # Robust parsing for absolute Flashscore URLs
                     slug_parts = l_url.split('/football/')[-1].strip('/').split('/')
-                    # slug_parts: [region, league-slug] or [region]
                     if len(slug_parts) >= 2:
                         league_id = f"{slug_parts[0]}_{slug_parts[1]}".upper().replace('-', '_')
                     elif len(slug_parts) == 1:
                         league_id = slug_parts[0].upper().replace('-', '_')
-                
+
                 if league_id == 'unknown' or not league_id:
                     league_id = rl_name.replace(' ', '_').replace('-', '_').upper()
-                
+
                 rl_rows.append({
                     'league_id': league_id,
                     'region': region or 'Unknown',
                     'league': league or 'Unknown',
                     'league_url': m.get('league_url') or 'Unknown',
-                    'league_crest': m.get('league_crest') or 'Unknown', 
+                    'league_crest': m.get('league_crest') or 'Unknown',
                     'region_flag': m.get('region_flag') or 'Unknown',
                     'date_updated': now,
                     'last_updated': now
@@ -104,12 +100,13 @@ async def extract_matches_from_page(page: Page) -> list:
                         'last_updated': now
                     })
 
-        # Multi-table batch upsert (single read/write per file)
-        from Data.Access.db_helpers import REGION_LEAGUE_CSV
-        batch_upsert(SCHEDULES_CSV, schedule_rows, files_and_headers[SCHEDULES_CSV], 'fixture_id')
-        batch_upsert(TEAMS_CSV, team_rows, files_and_headers[TEAMS_CSV], 'team_id')
-        batch_upsert(REGION_LEAGUE_CSV, rl_rows, files_and_headers[REGION_LEAGUE_CSV], 'league_id')
-        
+        # Save to SQLite via db_helpers
+        save_schedule_batch(schedule_rows)
+        for t in team_rows:
+            save_team_entry(t)
+        for rl in rl_rows:
+            save_region_league_entry(rl)
+
         print(f"    [Extractor] Saved {len(schedule_rows)} fixtures, {len(team_rows)} teams, and {len(rl_rows)} leagues.")
 
         # Cloud sync

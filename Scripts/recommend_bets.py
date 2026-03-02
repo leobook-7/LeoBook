@@ -3,7 +3,6 @@
 #
 # Functions: load_data(), calculate_market_reliability(), get_recommendations(), save_recommendations_to_predictions_csv()
 
-import csv
 import os
 import sys
 import argparse
@@ -27,14 +26,13 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(script_dir)
 sys.path.append(project_root)
 
-from Data.Access.db_helpers import PREDICTIONS_CSV
+from Data.Access.db_helpers import _get_conn
+from Data.Access.league_db import query_all
 from Data.Access.prediction_accuracy import get_market_option
 
 def load_data():
-    if not os.path.exists(PREDICTIONS_CSV):
-        return []
-    with open(PREDICTIONS_CSV, 'r', encoding='utf-8', newline='') as f:
-        return list(csv.DictReader(f))
+    conn = _get_conn()
+    return query_all(conn, 'predictions')
 
 def calculate_market_reliability(predictions):
     """Calculates accuracy for each market type based on historical results."""
@@ -245,51 +243,24 @@ def get_recommendations(target_date=None, show_all_upcoming=False, **kwargs):
     }
 
 def save_recommendations_to_predictions_csv(recommendations):
-    """Updates predictions.csv with recommendation_score (score > 0 = recommended)."""
-    if not os.path.exists(PREDICTIONS_CSV):
-        print(f"[Error] predictions.csv not found at {PREDICTIONS_CSV}")
-        return
-
-    # Create a lookup map for faster access
+    """Updates predictions with recommendation_score."""
+    from Data.Access.league_db import update_prediction
+    conn = _get_conn()
+    
     rec_map = {r['fixture_id']: r for r in recommendations if r.get('fixture_id')}
     rec_map_teams = {f"{r['match']}_{r['date']}": r for r in recommendations}
-
-    updated_rows = []
-    headers = []
     updates_count = 0
 
-    try:
-        with open(PREDICTIONS_CSV, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            headers = reader.fieldnames
-            data = list(reader)
+    all_preds = query_all(conn, 'predictions')
+    for row in all_preds:
+        fid = row.get('fixture_id')
+        match_key = f"{row.get('home_team')} vs {row.get('away_team')}_{row.get('date')}"
+        matched_rec = rec_map.get(fid) or rec_map_teams.get(match_key)
+        if matched_rec:
+            update_prediction(conn, fid, {'recommendation_score': str(round(matched_rec['score'], 2))})
+            updates_count += 1
 
-        if 'recommendation_score' not in headers:
-            headers.append('recommendation_score')
-
-        for row in data:
-            row['recommendation_score'] = '0'
-
-            fid = row.get('fixture_id')
-            match_key = f"{row.get('home_team')} vs {row.get('away_team')}_{row.get('date')}"
-            
-            matched_rec = rec_map.get(fid) or rec_map_teams.get(match_key)
-
-            if matched_rec:
-                row['recommendation_score'] = str(round(matched_rec['score'], 2))
-                updates_count += 1
-            
-            updated_rows.append(row)
-
-        with open(PREDICTIONS_CSV, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=headers, extrasaction='ignore')
-            writer.writeheader()
-            writer.writerows(updated_rows)
-            
-        print(f"[ALGO] Updated predictions.csv: {updates_count} scored out of {len(data)} total rows.")
-
-    except Exception as e:
-        print(f"[Error] Failed to update predictions.csv: {e}")
+    print(f"[ALGO] Updated predictions: {updates_count} scored out of {len(all_preds)} total rows.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Get betting recommendations.")

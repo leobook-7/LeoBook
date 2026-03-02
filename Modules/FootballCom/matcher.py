@@ -8,24 +8,19 @@ Matcher Module
 Handles matching predictions.csv data with extracted Football.com matches using Leo AI.
 """
 
-import csv
 from datetime import datetime
 from typing import List, Dict, Optional
 from pathlib import Path
-from Data.Access.db_helpers import PREDICTIONS_CSV, update_prediction_status
+from Data.Access.db_helpers import update_prediction_status, _get_conn
+from Data.Access.league_db import query_all
 from Core.Intelligence.unified_matcher import UnifiedBatchMatcher
 
 
 async def filter_pending_predictions() -> List[Dict]:
     """Load and filter predictions that are pending booking."""
-    pending_predictions = []
-    csv_path = Path(PREDICTIONS_CSV)
-    if csv_path.exists():
-        with open(csv_path, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            # v2.8: Pick 'pending' and 'failed_harvest' (to allow retries).
-            # Statuses like 'no_site_match', 'added_to_slip', 'booked' are skipped.
-            pending_predictions = [row for row in reader if row.get('status') in ['pending', 'failed_harvest']]
+    conn = _get_conn()
+    rows = query_all(conn, 'predictions', "status IN ('pending', 'failed_harvest')")
+    pending_predictions = [dict(r) for r in rows] if rows else []
     print(f"  [Matcher] Found {len(pending_predictions)} pending predictions.")
     return pending_predictions
 

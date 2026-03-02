@@ -8,7 +8,6 @@ Prediction Accuracy Analysis Module
 Analyzes prediction accuracy and generates reports for the LeoBook system.
 """
 
-import csv
 import re
 import os
 from datetime import datetime
@@ -16,7 +15,8 @@ from typing import Dict, List, Tuple
 from pathlib import Path
 from Core.Intelligence.aigo_suite import AIGOSuite
 
-from .db_helpers import PREDICTIONS_CSV
+from .db_helpers import _get_conn
+from Data.Access.league_db import query_all
 
 
 def get_market_option(prediction: str, home_team: str, away_team: str) -> str:
@@ -324,21 +324,15 @@ def format_date_range(date_range: Dict) -> str:
 def print_accuracy_report():
     """
     Print the prediction accuracy report to console.
-    This function reads predictions from CSV and generates the accuracy report.
+    Reads predictions from SQLite.
     """
-    if not os.path.exists(PREDICTIONS_CSV):
-        print("  [Accuracy] No predictions CSV found.")
+    conn = _get_conn()
+    predictions = query_all(conn, 'predictions')
+    if not predictions:
+        print("  [Accuracy] No predictions found.")
         return
 
-    # Read predictions
-    predictions = []
-    try:
-        with open(PREDICTIONS_CSV, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            predictions = list(reader)
-    except Exception as e:
-        print(f"  [Accuracy Error] Failed to read predictions: {e}")
-        return
+    predictions = [dict(r) for r in predictions]
 
     # Filter for reviewed predictions only (must have actual resolved outcomes)
     reviewed_predictions = [

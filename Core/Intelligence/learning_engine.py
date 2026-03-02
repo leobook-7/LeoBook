@@ -5,14 +5,12 @@ Handles prediction learning, performance analysis, and weight adaptation with re
 
 import json
 import os
-import csv
 from collections import defaultdict
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 LEARNING_DB = PROJECT_ROOT / "Data" / "Store" / "learning_weights.json"
-PREDICTIONS_CSV = PROJECT_ROOT / "Data" / "Store" / "predictions.csv"
 
 
 class LearningEngine:
@@ -114,54 +112,45 @@ class LearningEngine:
 
     @staticmethod
     def analyze_performance() -> Tuple[Dict[str, Dict[str, Dict[str, int]]], Dict[str, Dict[str, Dict[str, int]]]]:
-        """
-        Analyze prediction performance breakdown by Region/League and Rule.
-        Returns: (rule_performance, confidence_performance)
-        where each is { RegionLeague: { Key: { 'correct': int, 'total': int } } }
-        """
-        if not PREDICTIONS_CSV.exists():
-            return {}, {}
-
-        # Structure: League -> Rule -> Stats
+        """Analyze prediction performance by Region/League and Rule via SQLite."""
         performance = defaultdict(lambda: defaultdict(lambda: {"correct": 0, "total": 0}))
-
-        # Structure: League -> Confidence -> Stats
         conf_performance = defaultdict(lambda: defaultdict(lambda: {"correct": 0, "total": 0}))
 
         try:
-            with open(PREDICTIONS_CSV, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    # Only analyze resolved matches
-                    if row.get('outcome_correct') not in ['True', 'False', '1', '0']:
-                        continue
+            from Data.Access.db_helpers import _get_conn
+            from Data.Access.league_db import query_all
+            conn = _get_conn()
+            rows = query_all(conn, 'predictions')
+            if not rows:
+                return {}, {}
 
-                    is_correct = row.get('outcome_correct') in ('True', '1')
-                    region_league = row.get('region_league', 'Unknown')
-                    prediction_conf = row.get('confidence', 'Medium')
-                    reasoning_text = row.get('reason', '')
+            for row in rows:
+                if row.get('outcome_correct') not in ['True', 'False', '1', '0']:
+                    continue
 
-                    # Track confidence accuracy
-                    conf_performance[region_league][prediction_conf]["total"] += 1
-                    conf_performance["GLOBAL"][prediction_conf]["total"] += 1
-                    if is_correct:
-                        conf_performance[region_league][prediction_conf]["correct"] += 1
-                        conf_performance["GLOBAL"][prediction_conf]["correct"] += 1
+                is_correct = row.get('outcome_correct') in ('True', '1')
+                region_league = row.get('region_league', 'Unknown')
+                prediction_conf = row.get('confidence', 'Medium')
+                reasoning_text = row.get('reason', '') or ''
 
-                    # Track rule accuracy based on reasoning text
-                    for phrase, rule_key in LearningEngine.REASON_TO_RULE_MAP.items():
-                        if phrase in reasoning_text:
-                            performance[region_league][rule_key]["total"] += 1
-                            performance["GLOBAL"][rule_key]["total"] += 1
-                            if is_correct:
-                                performance[region_league][rule_key]["correct"] += 1
-                                performance["GLOBAL"][rule_key]["correct"] += 1
+                conf_performance[region_league][prediction_conf]["total"] += 1
+                conf_performance["GLOBAL"][prediction_conf]["total"] += 1
+                if is_correct:
+                    conf_performance[region_league][prediction_conf]["correct"] += 1
+                    conf_performance["GLOBAL"][prediction_conf]["correct"] += 1
+
+                for phrase, rule_key in LearningEngine.REASON_TO_RULE_MAP.items():
+                    if phrase in reasoning_text:
+                        performance[region_league][rule_key]["total"] += 1
+                        performance["GLOBAL"][rule_key]["total"] += 1
+                        if is_correct:
+                            performance[region_league][rule_key]["correct"] += 1
+                            performance["GLOBAL"][rule_key]["correct"] += 1
 
         except Exception as e:
             print(f"Error analyzing performance: {e}")
             return {}, {}
 
-        # Convert defaultdicts to regular dicts for return
         return dict(performance), dict(conf_performance)
 
     @staticmethod

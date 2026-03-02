@@ -4,11 +4,11 @@
 # Functions: run_chapter_3_oversight(), perform_health_check(), _count_predictions_for_date(), _get_bet_success_rate(), generate_oversight_report()
 
 import os
-import csv
 from datetime import datetime as dt
 from pathlib import Path
 from Core.System.lifecycle import state
-from Data.Access.db_helpers import log_audit_event
+from Data.Access.db_helpers import log_audit_event, _get_conn
+from Data.Access.league_db import query_all
 
 async def run_chapter_3_oversight():
     """
@@ -37,14 +37,14 @@ def perform_health_check():
     if not store_path.exists():
         issues.append("❌ Data store directory missing.")
     else:
-        pred_file = store_path / "predictions.csv"
-        if pred_file.exists():
+        db_path = store_path / "leobook.db"
+        if db_path.exists():
             import time
-            mtime = os.path.getmtime(pred_file)
-            if (time.time() - mtime) > 86400: # 24 hours
-                issues.append("⚠️ `predictions.csv` hasn't been updated in 24h.")
+            mtime = os.path.getmtime(db_path)
+            if (time.time() - mtime) > 86400:
+                issues.append("Warning: leobook.db hasn't been updated in 24h.")
         else:
-            issues.append("❌ `predictions.csv` missing.")
+            issues.append("Critical: leobook.db missing.")
 
     # 2. Check Error Log
     error_count = len(state.get("error_log", []))
@@ -69,36 +69,25 @@ def perform_health_check():
     return issues if issues else ["✅ System is healthy and operational."]
 
 def _count_predictions_for_date(date_str: str) -> int:
-    """Count predictions for a given date from predictions.csv."""
-    pred_file = Path("Data/Store/predictions.csv")
-    if not pred_file.exists():
-        return 0
+    """Count predictions for a given date from SQLite."""
     try:
-        with open(pred_file, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            return sum(1 for row in reader if row.get("date", "").startswith(date_str))
+        conn = _get_conn()
+        rows = query_all(conn, 'predictions')
+        return sum(1 for r in rows if str(r.get('date', '')).startswith(date_str))
     except Exception:
         return 0
 
 def _get_bet_success_rate() -> float | None:
-    """Calculate today's bet placement success rate from audit_log.csv."""
-    audit_file = Path("Data/Store/audit_log.csv")
-    if not audit_file.exists():
-        return None
+    """Calculate today's bet placement success rate from audit_log table."""
     try:
+        conn = _get_conn()
         today_str = dt.now().strftime("%Y-%m-%d")
-        total = 0
-        successful = 0
-        with open(audit_file, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get("event_type") == "BET_PLACEMENT" and today_str in row.get("timestamp", ""):
-                    total += 1
-                    if row.get("status", "").lower() == "success":
-                        successful += 1
-        if total == 0:
-            return None  # No bets placed today — nothing to report
-        return (successful / total) * 100
+        rows = query_all(conn, 'audit_log', f"event_type = 'BET_PLACEMENT' AND timestamp LIKE '{today_str}%'")
+        if not rows:
+            return None
+        total = len(rows)
+        successful = sum(1 for r in rows if str(r.get('status', '')).lower() == 'success')
+        return (successful / total) * 100 if total > 0 else None
     except Exception:
         return None
 

@@ -27,7 +27,7 @@ Before writing ANY code, ask in this exact order:
 
 ### 2.2 Every Page Function MUST Sync
 
-Every page function (`run_prologue_p1`, `run_chapter_1_p2`, etc.) MUST call `await run_full_sync()` before returning. No exceptions. Data parity between local CSVs and Supabase must be maintained at every step.
+Every page function (`run_prologue_p1`, `run_chapter_1_p2`, etc.) MUST call `await run_full_sync()` before returning. No exceptions. Data parity between local SQLite and Supabase must be maintained at every step.
 
 ### 2.3 Chapter Structure
 
@@ -72,7 +72,7 @@ Every Python file MUST have this header format:
 - **Per-Match Pipeline**: Match processing is the primary unit of concurrency. Use `BatchProcessor` to spawn autonomous worker nodes.
 - **Max Concurrency**: The number of parallel match workers is strictly limited by `MAX_CONCURRENCY` in `.env`.
 - **Sequential Integrity**: Inside each worker, steps (Extraction → Enrichment → Search Dict → Prediction) must remain SEQUENTIAL to ensure data completeness.
-- **Shared Locking**: Every disk write to `Data/Store/` MUST be wrapped in `async with CSV_LOCK:`.
+- **Concurrency**: SQLite WAL mode handles concurrent reads/writes — no manual locking required.
 - Never use `time.sleep()` in async code — use `await asyncio.sleep()`.
 - **Adaptive Feedback:** The `LearningEngine` must update weights AFTER `outcome_reviewer` completes a batch.
 
@@ -159,11 +159,11 @@ Every Dart file MUST have this header format using `//` (NOT `///`):
 
 ## 4. Data Layer
 
-### 4.1 CSV Is Source of Truth (Offline-First)
+### 4.1 SQLite Is Source of Truth (Offline-First)
 
-Local CSVs in `Data/Store/` are the primary data source. Supabase is the cloud sync target.
+`Data/Store/leobook.db` is the primary local data source. Supabase is the cloud sync target.
 
-- All operations read/write CSVs first
+- All operations read/write SQLite via `league_db.py`
 - `run_full_sync()` pushes changes to Supabase
 - Conflict resolution: **Latest Wins** (based on `last_updated` timestamp)
 
@@ -171,15 +171,13 @@ Local CSVs in `Data/Store/` are the primary data source. Supabase is the cloud s
 
 All table definitions live in `sync_manager.py` `TABLE_CONFIG`. To add a new table:
 1. Add entry to `TABLE_CONFIG`
-2. Add CSV headers to `db_helpers.py` `files_and_headers`
-   - **TEAMS**: `['team_id', 'team_name', 'league_ids', 'team_crest', 'team_url', 'last_updated', 'country', 'city', 'stadium', 'other_names', 'abbreviations', 'search_terms']`
-   - **REGION_LEAGUE**: `['league_id', 'region', 'region_flag', 'region_url', 'league', 'league_crest', 'league_url', 'date_updated', 'last_updated', 'other_names', 'abbreviations', 'search_terms']`
+2. Add table schema to `league_db.py` `init_db()`
 3. Create Supabase table with matching schema
 4. Run `python Leo.py --sync` to verify
 
 ### 4.3 Unextracted Data MUST Be "Unknown"
 
-Any CSV cell or database column whose value was **not extracted** during scraping MUST contain the string `Unknown` — **never** an empty string, `null`, `None`, or blank. This applies to all extractors (schedule, H2H, standings, enrichment) and all persistence layers.
+Any database column whose value was **not extracted** during scraping MUST contain the string `Unknown` — **never** an empty string, `null`, `None`, or blank. This applies to all extractors (schedule, H2H, standings, enrichment) and all persistence layers.
 
 - Scores (`home_score`, `away_score`) are exempt — they are legitimately empty before a match starts.
 - `match_status` defaults to `scheduled` when no status is detected.
@@ -187,15 +185,14 @@ Any CSV cell or database column whose value was **not extracted** during scrapin
 
 ### 4.4 Incremental Persistence
 
-Every long-running enrichment or scraping task MUST implement **incremental disk writes**. Data should be persisted to local CSVs/Supabase after EACH item is processed. Do not wait for the entire batch to complete.
+Every long-running enrichment or scraping task MUST implement **incremental writes**. Data should be persisted to SQLite/Supabase after EACH item is processed. Do not wait for the entire batch to complete.
 
-### 4.6 Concurrency & Shared Locking (v3.5)
+### 4.6 Concurrency (WAL Mode)
 
-To prevent data corruption during parallel execution, all shared CSV access MUST follow the **Shared Locking** protocol:
-- **`CSV_LOCK`**: Use the global `asyncio.Lock` from `db_helpers.py`.
-- **Block-Level Locking**: Wrap every read-modify-write block in `async with CSV_LOCK:`.
-- **Atomic Operations**: For simple reads or writes, use the `async_read_csv` and `async_write_csv` helpers to ensure atomic access.
-- **Deadlock Avoidance**: Never acquire multiple locks; stick to the single global `CSV_LOCK` for all `Data/Store/` persistence.
+SQLite WAL (Write-Ahead Logging) handles concurrent reads/writes automatically. No manual locking (`CSV_LOCK`) is required.
+- **Thread-safe**: Multiple readers + one writer is supported natively.
+- **Connection reuse**: Use `_get_conn()` from `db_helpers.py` for all database access.
+- **Deadlock-free**: No lock acquisition needed — WAL mode eliminates this class of bugs.
 
 ### 4.7 Live Status Restriction (2.5hr Rule)
 Only matches within a **2.5-hour window from the scheduled match time** can hold a `LIVE` status. Any match exceeding this threshold MUST be transitioned to `finished` (if no other terminal status is present) by the `fs_live_streamer.py` propagation logic. This ensures UI accuracy and prevents stale live bages.
@@ -242,8 +239,8 @@ LeoBook/
 │   ├── Browser/           ← Playwright helpers, extractors
 │   └── Utils/             ← Constants, utilities
 ├── Data/
-│   ├── Access/            ← DB helpers, sync, CSV ops, review
-│   ├── Store/             ← CSV files (source of truth)
+│   ├── Access/            ← DB helpers, sync, league_db (SQLite ops), review
+│   ├── Store/             ← leobook.db (SQLite source of truth) + learning_weights.json
 │   └── Supabase/          ← Migration scripts (archived)
 ├── Modules/
 │   ├── Flashscore/        ← Scraping, analysis, live streamer
@@ -436,6 +433,6 @@ LeoBook/
 
 ---
 
-*Last updated: March 1, 2026*
+*Last updated: March 2, 2026*
 *Authored by: LeoBook Engineering Team*
 

@@ -41,6 +41,130 @@ TABLE_CONFIG = {
     'countries':        {'local_table': 'countries',        'remote_table': 'countries',        'key': 'code'},
 }
 
+# ── Supabase auto-provisioning DDL ─────────────────────────────────────────
+# Postgres CREATE TABLE statements for each remote table.
+# Used by _ensure_remote_table() when PGRST205 (table not found) is detected.
+SUPABASE_SCHEMA = {
+    'predictions': """
+        CREATE TABLE IF NOT EXISTS public.predictions (
+            fixture_id TEXT PRIMARY KEY,
+            date TEXT, match_time TEXT, region_league TEXT,
+            home_team TEXT, away_team TEXT, home_team_id TEXT, away_team_id TEXT,
+            prediction TEXT, confidence TEXT, reason TEXT,
+            xg_home REAL, xg_away REAL, btts TEXT, over_2_5 TEXT,
+            best_score TEXT, top_scores TEXT,
+            home_form_n INTEGER, away_form_n INTEGER,
+            home_tags TEXT, away_tags TEXT, h2h_tags TEXT, standings_tags TEXT,
+            h2h_count INTEGER, actual_score TEXT, outcome_correct TEXT,
+            status TEXT DEFAULT 'pending', match_link TEXT, odds TEXT,
+            market_reliability_score REAL, home_crest_url TEXT, away_crest_url TEXT,
+            recommendation_score REAL, h2h_fixture_ids JSONB, form_fixture_ids JSONB,
+            standings_snapshot JSONB, league_stage TEXT, generated_at TEXT,
+            home_score TEXT, away_score TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'schedules': """
+        CREATE TABLE IF NOT EXISTS public.schedules (
+            fixture_id TEXT PRIMARY KEY,
+            date TEXT, match_time TEXT, league_id TEXT,
+            home_team_id TEXT, home_team TEXT, away_team_id TEXT, away_team TEXT,
+            home_score INTEGER, away_score INTEGER, extra JSONB,
+            league_stage TEXT, match_status TEXT, season TEXT,
+            home_crest TEXT, away_crest TEXT, match_link TEXT,
+            region_league TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'teams': """
+        CREATE TABLE IF NOT EXISTS public.teams (
+            team_id TEXT PRIMARY KEY,
+            team_name TEXT NOT NULL, league_ids JSONB, team_crest TEXT,
+            country_code TEXT, team_url TEXT,
+            country TEXT, city TEXT, stadium TEXT,
+            other_names TEXT, abbreviations TEXT, search_terms TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'region_league': """
+        CREATE TABLE IF NOT EXISTS public.region_league (
+            league_id TEXT PRIMARY KEY,
+            fs_league_id TEXT, country_code TEXT, continent TEXT,
+            league TEXT NOT NULL, league_crest TEXT, current_season TEXT,
+            league_url TEXT, region TEXT, region_flag TEXT, region_url TEXT,
+            other_names TEXT, abbreviations TEXT, search_terms TEXT,
+            date_updated TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'standings': """
+        CREATE TABLE IF NOT EXISTS public.standings (
+            standings_key TEXT PRIMARY KEY,
+            league_id TEXT, team_id TEXT, team_name TEXT,
+            position INTEGER, played INTEGER, wins INTEGER, draws INTEGER,
+            losses INTEGER, goals_for INTEGER, goals_against INTEGER,
+            goal_difference INTEGER, points INTEGER, region_league TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'audit_log': """
+        CREATE TABLE IF NOT EXISTS public.audit_log (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT, event_type TEXT, description TEXT,
+            balance_before REAL, balance_after REAL, stake REAL, status TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'fb_matches': """
+        CREATE TABLE IF NOT EXISTS public.fb_matches (
+            site_match_id TEXT PRIMARY KEY,
+            date TEXT, time TEXT, home_team TEXT, away_team TEXT,
+            league TEXT, url TEXT, last_extracted TEXT, fixture_id TEXT,
+            matched TEXT, odds TEXT, booking_status TEXT, booking_details TEXT,
+            booking_code TEXT, booking_url TEXT, status TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'live_scores': """
+        CREATE TABLE IF NOT EXISTS public.live_scores (
+            fixture_id TEXT PRIMARY KEY,
+            home_team TEXT, away_team TEXT,
+            home_score TEXT, away_score TEXT, minute TEXT,
+            status TEXT, region_league TEXT, match_link TEXT, timestamp TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'accuracy_reports': """
+        CREATE TABLE IF NOT EXISTS public.accuracy_reports (
+            report_id TEXT PRIMARY KEY,
+            timestamp TEXT, volume INTEGER, win_rate REAL,
+            return_pct REAL, period TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'countries': """
+        CREATE TABLE IF NOT EXISTS public.countries (
+            code TEXT PRIMARY KEY,
+            name TEXT, continent TEXT, capital TEXT,
+            flag_1x1 TEXT, flag_4x3 TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'profiles': """
+        CREATE TABLE IF NOT EXISTS public.profiles (
+            id TEXT PRIMARY KEY,
+            email TEXT, username TEXT, full_name TEXT,
+            avatar_url TEXT, tier TEXT, credits REAL,
+            created_at TEXT, updated_at TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'custom_rules': """
+        CREATE TABLE IF NOT EXISTS public.custom_rules (
+            id TEXT PRIMARY KEY,
+            user_id TEXT, name TEXT, description TEXT,
+            is_active INTEGER, logic TEXT, priority INTEGER,
+            created_at TEXT, updated_at TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+    'rule_executions': """
+        CREATE TABLE IF NOT EXISTS public.rule_executions (
+            id TEXT PRIMARY KEY,
+            rule_id TEXT, fixture_id TEXT, user_id TEXT,
+            result TEXT, executed_at TEXT,
+            last_updated TIMESTAMPTZ DEFAULT now()
+        );""",
+}
+
 # Column renames: SQLite column -> Supabase column (where they differ)
 _COL_RENAME_PUSH = {
     'fixtures': {
@@ -75,8 +199,38 @@ class SyncManager:
     def __init__(self):
         self.supabase = get_supabase_client()
         self.conn = init_db()
+        self._created_tables = set()  # Track auto-created tables this session
         if not self.supabase:
             logger.warning("[!] SyncManager initialized without Supabase connection. Sync disabled.")
+
+    def _ensure_remote_table(self, remote_table: str) -> bool:
+        """Auto-create a Supabase table if it's missing. Returns True if created.
+        Uses the exec_sql() RPC function deployed on Supabase.
+        """
+        if remote_table in self._created_tables:
+            return True
+
+        ddl = SUPABASE_SCHEMA.get(remote_table)
+        if not ddl:
+            logger.warning(f"    [!] No DDL schema for table '{remote_table}'. Cannot auto-create.")
+            return False
+
+        try:
+            self.supabase.rpc('exec_sql', {'query': ddl.strip()}).execute()
+        except Exception as rpc_err:
+            logger.warning(f"    [!] exec_sql RPC failed for '{remote_table}': {rpc_err}")
+            return False
+
+        # Verify creation by attempting a simple select
+        try:
+            self.supabase.table(remote_table).select('*').limit(0).execute()
+            self._created_tables.add(remote_table)
+            logger.info(f"    [+] Auto-created table '{remote_table}' on Supabase.")
+            print(f"    [+] Auto-created table '{remote_table}' on Supabase.")
+            return True
+        except Exception:
+            logger.warning(f"    [!] Table '{remote_table}' still missing after auto-create attempt.")
+            return False
 
     async def sync_on_startup(self):
         """Pull remote changes and push local changes for all configured tables."""
@@ -159,7 +313,7 @@ class SyncManager:
             await self._verify_sync_parity(table_key, to_push_ids)
 
     async def _fetch_remote_metadata(self, table_name: str, key_field: str) -> Dict[str, str]:
-        """Fetch all ID:last_updated pairs from Supabase."""
+        """Fetch all ID:last_updated pairs from Supabase. Auto-creates table if missing."""
         remote_map = {}
         batch_size = 1000
         offset = 0
@@ -178,7 +332,17 @@ class SyncManager:
                     break
                 offset += batch_size
             except Exception as e:
-                logger.error(f"      [x] Metadata fetch error at offset {offset}: {e}")
+                err_str = str(e)
+                # Auto-create table if PGRST205 (table not found)
+                if 'PGRST205' in err_str or 'Could not find the table' in err_str:
+                    logger.info(f"      [AUTO] Table '{table_name}' not found — attempting auto-create...")
+                    if self._ensure_remote_table(table_name):
+                        # Retry from the top after creating
+                        continue
+                    else:
+                        logger.warning(f"      [!] Could not auto-create '{table_name}'. Skipping.")
+                else:
+                    logger.error(f"      [x] Metadata fetch error at offset {offset}: {e}")
                 break
 
         return remote_map
@@ -325,7 +489,19 @@ class SyncManager:
             pbar = tqdm(total=len(deduped), desc=f"    Pushing {remote_table}", unit="row")
             for i in range(0, len(deduped), api_batch_size):
                 batch = deduped[i:i + api_batch_size]
-                self.supabase.table(remote_table).upsert(batch, on_conflict=conflict_key).execute()
+                try:
+                    self.supabase.table(remote_table).upsert(batch, on_conflict=conflict_key).execute()
+                except Exception as batch_err:
+                    err_str = str(batch_err)
+                    if 'PGRST205' in err_str or 'Could not find the table' in err_str:
+                        logger.info(f"    [AUTO] Table '{remote_table}' missing during upsert — auto-creating...")
+                        if self._ensure_remote_table(remote_table):
+                            # Retry this batch
+                            self.supabase.table(remote_table).upsert(batch, on_conflict=conflict_key).execute()
+                        else:
+                            raise batch_err
+                    else:
+                        raise batch_err
                 pbar.update(len(batch))
             pbar.close()
             logger.info(f"    [SYNC] Upserted {len(deduped)} rows to {remote_table}.")

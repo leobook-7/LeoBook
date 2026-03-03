@@ -1,4 +1,4 @@
-# LeoBook Developer RuleBook v4.0
+# LeoBook Developer RuleBook v5.0
 
 > **This document is LAW.** Every developer and AI agent working on LeoBook MUST follow these rules without exception. Violations will break the system.
 
@@ -37,7 +37,7 @@ Prologue P2: Accuracy Generation & Sync  → accuracy generation + final sync
   (Runs concurrently with Ch1→Ch2 pipeline)
 Chapter 1 P1 (Per-Match Pipeline):
     1. Extraction (Match page)            → H2H + Standings
-    2. Enrichment (League page)           → Metadata + Match URLs + Teams
+    2. Enrichment (League page)           → Metadata + Match URLs + Teams + Historical Seasons
     3. Search Dict (LLM)                  → Search terms + Abbreviations
     4. Prediction (Adaptive)              → Probability + Save
 Chapter 1 P2: Odds Harvesting            → Football.com URL resolution
@@ -75,6 +75,23 @@ Every Python file MUST have this header format:
 - **Concurrency**: SQLite WAL mode handles concurrent reads/writes — no manual locking required.
 - Never use `time.sleep()` in async code — use `await asyncio.sleep()`.
 - **Adaptive Feedback:** The `LearningEngine` must update weights AFTER `outcome_reviewer` completes a batch.
+
+### 2.7 Zero Hardcoded Selectors (MANDATORY)
+
+- **Rule**: NO CSS selectors, XPaths, or element IDs are allowed to be hardcoded in Python or JavaScript extraction strings.
+- **Implementation**: 
+    1. All selectors MUST be stored in `Config/knowledge.json`.
+    2. All code MUST retrieve selectors via `SelectorManager.get_selector(context, key)`.
+    3. For Playwright `evaluate()`, pass the selectors as a dictionary in the `arg` parameter.
+- **Reasoning**: This allows AIGO to self-heal the system without code changes by merely updating the JSON knowledge base.
+
+### 2.8 Timezone Consistency (Africa/Lagos)
+
+- **Rule**: Every timestamp generated or compared by the Python backend MUST use the Nigerian timezone (**Africa/Lagos**, UTC+1).
+- **Implementation**:
+    1. NEVER use `datetime.now()` or `datetime.utcnow()`.
+    2. ALWAYS use `now_ng()` from `Core.Utils.constants`.
+- **Reasoning**: Consistency across GitHub Codespaces (UTC), local machines, and Supabase prevents match-time offsets and prediction errors.
 
 ---
 

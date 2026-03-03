@@ -1,6 +1,6 @@
 # LeoBook Algorithm & Codebase Reference
 
-> **Version**: 4.0 · **Last Updated**: 2026-03-01 · **Architecture**: High-Velocity Concurrent Architecture (Shared Locking + Per-Match Sequential Pipeline + Adaptive Learning)
+> **Version**: 5.0 · **Last Updated**: 2026-03-03 · **Architecture**: High-Velocity Concurrent Architecture (Shared Locking + Per-Match Sequential Pipeline + Adaptive Learning)
 
 This document maps the **execution flow** of [Leo.py](Leo.py) to specific files and functions.
 
@@ -11,7 +11,7 @@ This document maps the **execution flow** of [Leo.py](Leo.py) to specific files 
 Leo.py is a **pure orchestrator**. It runs an infinite `while True` loop, splitting each cycle into phases:
 
 ```
-Leo.py (Orchestrator) v4.0
+Leo.py (Orchestrator) v5.0
 ├── Prologue P1 (Sequential Prerequisite):
 │   └── Cloud Sync → Outcome Review → Accuracy Report
 ├── Concurrent Execution:
@@ -55,8 +55,9 @@ Runs in parallel with the main cycle via `asyncio.create_task()` in its **own is
 1. **Parallel Orchestration**: `Leo.py` uses `BatchProcessor` to spawn multiple `process_match_task` workers in parallel. Match sorting uses `match_time` field for chronological processing.
 2. **Integrated Worker Node**: Each worker executes a strict sequential pipeline:
    - **H2H + Standings**: Core match data extraction.
-   - **League Enrichment**: Inline navigation to league pages (deduped by `league_id` per cycle).
+   - **League Enrichment**: Inline navigation to league pages (deduped by `league_id` per cycle). Handles **Historical Season Extraction** via `/archive/` crawling and **Smart Year Detection** for match dates based on season context.
    - **Search Dict**: JIT metadata enrichment via LLMs (Gemini primary, Grok fallback) with enrichment gate capped at 100 teams max per cycle.
+   - **Flashscore ID Integration**: Uses native string IDs (`fs_league_id`, `team_id`) as the spine of the database schema.
    - **Prediction**: Final rule engine analysis once all data is present.
 3. **Shared Locking (CSV_LOCK)**: All persistent data access is protected by a global `asyncio.Lock` in [db_helpers.py](Data/Access/db_helpers.py).
 4. **Resiliency**: If one match worker fails, other nodes continue processing. Data is saved incrementally per-match.
@@ -115,5 +116,5 @@ See [leobookapp/README.md](leobookapp/README.md) for the Liquid Glass design spe
 
 ---
 
-*Last updated: March 1, 2026*
+*Last updated: March 3, 2026*
 *LeoBook Engineering Team*

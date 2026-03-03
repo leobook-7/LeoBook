@@ -1,4 +1,4 @@
-> **Version**: 4.0 · **Last Updated**: 2026-03-01 · **Architecture**: High-Velocity Concurrent Architecture (Shared Locking + Multi-Key/Multi-Model LLM Rotation + Adaptive Learning)
+> **Version**: 5.0 · **Last Updated**: 2026-03-03 · **Architecture**: High-Velocity Concurrent Architecture (Shared Locking + Multi-Key/Multi-Model LLM Rotation + Adaptive Learning)
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ LeoBook is a **fully autonomous sports prediction and betting system** comprised
 | **Backend (Leo.py)** | Python 3.12 + Playwright | Autonomous data extraction, rule-based prediction, odds harvesting, bet placement, withdrawal management, and system health monitoring |
 | **Frontend (leobookapp)** | Flutter/Dart (flutter_bloc/Cubit) | Dashboard with "Telegram-grade" density, liquid glass aesthetics, and proportional scaling |
 
-**Leo.py** is a **pure orchestrator** — it contains zero business logic. All logic lives in the modules it imports. It runs in an infinite loop, executing a cycle every 6h. The engine uses **High-Velocity Concurrent Execution** via a per-match sequential pipeline, protected by a global `CSV_LOCK` for storage integrity. A **live score streamer** runs in its own isolated Playwright session in parallel.
+**Leo.py** is a **pure orchestrator** — it contains zero business logic. All logic lives in the modules it imports. It runs in an infinite loop, executing a cycle every 6h. The engine uses **High-Velocity Concurrent Execution** via a per-match sequential pipeline, protected by a global `CSV_LOCK` for storage integrity. A **live score streamer** runs in its own isolated Playwright session in parallel. **V5.0 transition**: The system now utilizes a data-driven selector architecture (`SelectorManager`) and enforces unified Nigerian timekeeping (`now_ng`). Data sovereignty is achieved via Flashscore-native string IDs for all entities.
 
 ---
 
@@ -76,7 +76,7 @@ LeoBook is a **fully autonomous sports prediction and betting system** comprised
 | File | Function |
 |------|----------|
 | `Scripts/build_search_dict.py` | Team/league LLM enrichment (ASCENDING model chain) |
-| `Scripts/enrich_leagues.py` | League metadata extraction |
+| `Scripts/enrich_leagues.py` | League metadata + Historical season extraction |
 | `Scripts/enrich_all_schedules.py` | Deep schedule enrichment with standings |
 | `Scripts/recommend_bets.py` | Recommendation engine |
 | `Scripts/backtest_monitor.py` | Backtest trigger detection |
@@ -205,5 +205,5 @@ flowchart LR
 ```
 
 ---
-*Last updated: March 1, 2026*
+*Last updated: March 3, 2026*
 *LeoBook Engineering Team*

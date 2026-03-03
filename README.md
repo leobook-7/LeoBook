@@ -3,7 +3,7 @@
 **Developer**: Matterialless LLC
 **Chief Engineer**: Emenike Chinenye James
 **Powered by**: Multi-Key Gemini Rotation (25+ Keys, 5 Models) · xAI Grok API (Optional)
-**Architecture**: High-Velocity Concurrent Architecture v4.0 (Per-Match Pipeline + Live Streaming + Adaptive Learning)
+**Architecture**: High-Velocity Concurrent Architecture v5.0 (Per-Match Pipeline + Live Streaming + Adaptive Learning)
 
 ---
 
@@ -16,7 +16,7 @@ LeoBook is an **autonomous sports prediction and betting system** with two halve
 | `Leo.py` | Python 3.12 + Playwright | Data extraction, rule-based prediction, odds harvesting, automated bet placement, withdrawal management |
 | `leobookapp/` | Flutter/Dart | Cross-platform dashboard with "Telegram-grade" UI density, Liquid Glass aesthetics, and real-time streaming |
 
-Leo.py is a **pure orchestrator** — zero business logic. All logic lives in the modules it imports. It runs in an infinite cycle (default every 6 hours), with a parallel live score streamer running continuously in its own isolated browser session.
+**Leo.py** is a **pure orchestrator** — it contains zero business logic. All logic lives in the modules it imports. It runs in an infinite loop, executing a cycle every 6h. The engine uses **High-Velocity Concurrent Execution** via a per-match sequential pipeline, protected by a global `CSV_LOCK` for storage integrity. A **live score streamer** runs in its own isolated Playwright session in parallel. **V5.0 transition**: The system now utilizes a data-driven selector architecture (`SelectorManager`) and enforces unified Nigerian timekeeping (`now_ng`). Data sovereignty is achieved via Flashscore-native string IDs for all entities.
 
 For the complete file inventory and step-by-step execution trace, see [LeoBook_Technical_Master_Report.md](LeoBook_Technical_Master_Report.md).
 
@@ -97,8 +97,8 @@ LeoBook/
 │       └── booker/         # Booking sub-module
 ├── Scripts/                # Pipeline scripts (called by Leo.py)
 │   ├── build_search_dict.py  # Team/league LLM enrichment
-│   ├── enrich_leagues.py     # League metadata extraction
-│   ├── enrich_all_schedules.py # Deep schedule enrichment
+├── enrich_leagues.py     # League metadata + Historical season extraction
+├── enrich_all_schedules.py # Deep schedule enrichment
 │   ├── recommend_bets.py     # Recommendation engine
 │   └── backtest_monitor.py   # Backtest integration
 ├── Data/
@@ -160,8 +160,9 @@ python Leo.py --schedule    # Extract schedules
 python Leo.py --schedule --all  # Full deep schedule extraction
 python Leo.py --schedule --all --date 01.03.2026  # Redo/extract specific day
 python Leo.py --chapter 1 --page 1 --refresh     # Re-analyze today (bypass resume)
-python Leo.py --enrich      # Manual metadata enrichment
 python Leo.py --enrich-leagues  # Parallel league enrichment + search dict
+python Leo.py --enrich-leagues --seasons N  # Extract last N historical seasons
+python Leo.py --enrich-leagues --all-seasons # Extract ALL available history
 python Leo.py --search-dict # Rebuild team/league search dictionary
 python Leo.py --backtest    # Single-pass backtest
 python Leo.py --assets      # Sync team and league assets to Supabase
@@ -225,5 +226,5 @@ flutter run -d chrome  # or: flutter run (mobile)
 
 ---
 
-*Last updated: March 1, 2026*
-*Authored by: LeoBook Engineering Team*
+*Last updated: March 3, 2026*
+*LeoBook Engineering Team*

@@ -136,6 +136,7 @@ python Leo.py --enrich-leagues --limit 5  # Extract first 5 unprocessed leagues
 python Leo.py --enrich-leagues --limit 501-1000 # Range-based enrichment (e.g. 501-1000)
 python Leo.py --enrich-leagues --season 1 # Target ONLY the most recent past season
 python Leo.py --enrich-leagues --seasons 2 # Extract last 2 seasons per league
+python Leo.py --enrich-leagues --reset     # Reset all leagues and re-enrich
 python Leo.py --train-rl               # Chronological RL model training
 python Leo.py --help                    # Comprehensive CLI command catalog
 ```
@@ -165,5 +166,5 @@ python Leo.py --help                    # Comprehensive CLI command catalog
 
 ---
 
-*Last updated: March 3, 2026 (v7.0 — Autonomous Scheduler Architecture)*
+*Last updated: March 3, 2026 (v7.0 — Enrichment Pipeline Bug Fixes + Selector Compliance)*
 *LeoBook Engineering Team*

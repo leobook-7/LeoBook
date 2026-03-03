@@ -648,8 +648,24 @@ def get_unprocessed_leagues(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
 def upsert_team(conn: sqlite3.Connection, data: Dict[str, Any]) -> int:
     """Insert or update a team by team_id. Returns the row id."""
     now = now_ng().isoformat()
-    league_ids_json = json.dumps(data.get("league_ids", []))
+    new_league_ids = data.get("league_ids", [])
     team_id = data.get("team_id")
+
+    # BUG #6 fix: Merge league_ids with existing instead of replacing
+    if team_id:
+        existing = conn.execute(
+            "SELECT league_ids FROM teams WHERE team_id = ?", (team_id,)
+        ).fetchone()
+        if existing and existing[0]:
+            try:
+                old_ids = json.loads(existing[0])
+                if isinstance(old_ids, list):
+                    merged = list(set(old_ids + new_league_ids))
+                    new_league_ids = merged
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    league_ids_json = json.dumps(new_league_ids) if new_league_ids else None
 
     if team_id:
         # Prefer team_id as the unique key
@@ -660,7 +676,7 @@ def upsert_team(conn: sqlite3.Connection, data: Dict[str, Any]) -> int:
                    :country, :city, :stadium, :other_names, :abbreviations, :search_terms, :last_updated)
                ON CONFLICT(team_id) DO UPDATE SET
                    name           = COALESCE(excluded.name, teams.name),
-                   league_ids     = excluded.league_ids,
+                   league_ids     = COALESCE(excluded.league_ids, teams.league_ids),
                    crest          = COALESCE(excluded.crest, teams.crest),
                    country_code   = COALESCE(excluded.country_code, teams.country_code),
                    url            = COALESCE(excluded.url, teams.url),

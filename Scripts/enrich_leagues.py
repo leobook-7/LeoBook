@@ -2,14 +2,17 @@
 # Part of LeoBook Scripts — Data Collection
 #
 # Usage:
-#   python -m Scripts.enrich_leagues              # All leagues (current season)
-#   python -m Scripts.enrich_leagues --limit 5    # First 5 unprocessed
-#   python -m Scripts.enrich_leagues --reset      # Reset processed flags
-#   python -m Scripts.enrich_leagues --seasons 2  # Last 2 seasons per league
-#   python -m Scripts.enrich_leagues --all-seasons # All available seasons
+#   python -m Scripts.enrich_leagues                     # All leagues (current season)
+#   python -m Scripts.enrich_leagues --limit 5           # First 5 unprocessed
+#   python -m Scripts.enrich_leagues --limit 501-1000    # Range-based (leagues 501 to 1000)
+#   python -m Scripts.enrich_leagues --reset             # Reset processed flags
+#   python -m Scripts.enrich_leagues --seasons 2         # Last 2 seasons per league
+#   python -m Scripts.enrich_leagues --season 1          # ONLY the most recent past season
+#   python -m Scripts.enrich_leagues --all-seasons       # All available seasons
 #
 # Reads Data/Store/leagues.json -> populates leagues/teams/fixtures tables
 # Downloads crests concurrently via ThreadPoolExecutor
+# All CSS selectors loaded from Config/knowledge.json via SelectorManager
 
 import asyncio
 import argparse
@@ -51,7 +54,7 @@ TEAM_CRESTS_DIR = os.path.join(CRESTS_DIR, "teams")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 MAX_CONCURRENCY = 3          # Parallel browser tabs
-MAX_SHOW_MORE = 500           # Exhaustive "Show more" clicks
+MAX_SHOW_MORE = 50           # Exhaustive "Show more" clicks
 DOWNLOAD_WORKERS = 8         # ThreadPool workers for image downloads
 REQUEST_TIMEOUT = 15         # Seconds for image download timeout
 
@@ -240,7 +243,10 @@ EXTRACT_MATCHES_JS = r"""(ctx) => {
 
         // ── Team ID + URL from match link ──
         let homeTeamId = '', awayTeamId = '', homeTeamUrl = '', awayTeamUrl = '';
-        const linkEl = row.querySelector(s.match_link);
+        // eventRowLink is a SIBLING <a> linked via aria-describedby, NOT a child/parent
+        // DOM: <a class="eventRowLink" aria-describedby="g_1_XXXXX" href="..."></a>
+        let linkEl = row.querySelector(s.match_link);
+        if (!linkEl) linkEl = document.querySelector(`a[aria-describedby="${rowId}"]`);
         const mLink = linkEl ? linkEl.getAttribute('href') : '';
         if (mLink && mLink.includes('/match/football/')) {
             const cleanPath = mLink.replace(/^(.*\/match\/football\/)/, '');
@@ -273,7 +279,6 @@ EXTRACT_MATCHES_JS = r"""(ctx) => {
             away_crest_url: awayCrest,
             league_stage: currentRound,
             extra: extraTag || null,
-            match_link: mLink ? (mLink.startsWith('http') ? mLink : 'https://www.flashscore.com' + mLink) : '',
             url: `/match/${fixtureId}/#/match-summary`
         });
     });
@@ -307,19 +312,33 @@ EXTRACT_CREST_JS = r"""(selectors) => {
     return img ? (img.src || img.getAttribute('data-src') || '') : '';
 }"""
 
-# ── JS to extract fs_league_id from URL hash ────────────────────────────────
+# ── JS to extract fs_league_id from Flashscore's internal config ──────────
 EXTRACT_FS_LEAGUE_ID_JS = r"""() => {
-    // The URL hash contains the fs_league_id, e.g. /#/OEEq9Yvp/standings/overall/
-    const hash = window.location.hash || '';
-    const match = hash.match(/#\/([A-Za-z0-9]{6,10})\//);
-    if (match) return match[1];
-    // Fallback: check internal navigation links
-    const navLinks = document.querySelectorAll('a[href*="/#/"]');
+    // 1. Direct access to Flashscore's internal data object (Most Stable)
+    if (window.leaguePageHeaderData && window.leaguePageHeaderData.tournamentStageId) {
+        return window.leaguePageHeaderData.tournamentStageId;
+    }
+    if (window.tournament_id) return window.tournament_id;
+    if (window.config && window.config.tournamentStage) return window.config.tournamentStage;
+
+    // 2. Fallback: Parse from URL path (matches the current structure)
+    const path = window.location.pathname || '';
+    const pathMatch = path.match(/-([A-Za-z0-9]{6,10})\/?$/);
+    if (pathMatch) return pathMatch[1];
+
+    // 3. Last Resort: Check navigation links
+    const navLinks = document.querySelectorAll('a[href*="/standings/"], a[href*="/results/"]');
     for (const link of navLinks) {
         const href = link.getAttribute('href') || '';
-        const m = href.match(/#\/([A-Za-z0-9]{6,10})\//);
+        const m = href.match(/\/([A-Za-z0-9]{6,10})\/standings\//);
         if (m) return m[1];
     }
+    
+    // 4. Legacy Hash Fallback
+    const hash = window.location.hash || '';
+    const hashMatch = hash.match(/#\/([A-Za-z0-9]{6,10})\//);
+    if (hashMatch) return hashMatch[1];
+
     return '';
 }"""
 
@@ -459,7 +478,6 @@ async def extract_tab(page: Page, league_url: str, tab: str, conn,
 
     Args:
         league_id: Flashscore league_id string (NOT SQLite auto-increment).
-        region_league: Pre-constructed 'Region: League Name' string.
     """
     url = league_url.rstrip("/") + f"/{tab}/"
     print(f"    [{tab.upper()}] Navigating to {url}")
@@ -621,9 +639,9 @@ async def extract_tab(page: Page, league_url: str, tab: str, conn,
             "season": season,
             "home_crest": home_crest_path,
             "away_crest": away_crest_path,
-            "url": m.get("match_link") or f"https://www.flashscore.com/match/{m.get('fixture_id', '')}/#/match-summary",
+            "url": f"https://www.flashscore.com/match/{m.get('fixture_id', '')}/#/match-summary",
             "region_league": region_league,
-            "match_link": m.get("match_link") or f"https://www.flashscore.com/match/{m.get('fixture_id', '')}/#/match-summary",
+            "match_link": m.get("match_link", ""),
         })
 
     # Bulk insert fixtures
@@ -637,22 +655,10 @@ async def extract_tab(page: Page, league_url: str, tab: str, conn,
             result = fut.result(timeout=30)
             if result:
                 downloaded += 1
-                # Bug #5 fix: Use team_id for crest updates when available
-                team_id = None
-                for m in matches_raw:
-                    if side == "home" and m.get("home_team_name") == name:
-                        team_id = m.get("home_team_id")
-                        break
-                    elif side == "away" and m.get("away_team_name") == name:
-                        team_id = m.get("away_team_id")
-                        break
-                if team_id:
-                    conn.execute("UPDATE teams SET crest = ? WHERE team_id = ?", (dest, team_id))
-                else:
-                    conn.execute(
-                        "UPDATE teams SET crest = ? WHERE name = ? AND (country_code = ? OR country_code IS NULL)",
-                        (dest, name, country_code)
-                    )
+                conn.execute(
+                    "UPDATE teams SET crest = ? WHERE name = ? AND country_code = ?",
+                    (dest, name, country_code)
+                )
         except Exception:
             pass
     if downloaded:
@@ -695,7 +701,7 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
         await asyncio.sleep(4)
         await fs_universal_popup_dismissal(page)
 
-        # ── Extract fs_league_id from page URL hash ──────────────────────
+        # ── Extract fs_league_id from page config ─────────────────────────
         fs_league_id = await page.evaluate(EXTRACT_FS_LEAGUE_ID_JS)
         if fs_league_id:
             print(f"    [FS ID] {fs_league_id}")
@@ -703,23 +709,32 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
         # Retrieve all selectors once for this context
         selectors = selector_mgr.get_all_selectors_for_context(CONTEXT_LEAGUE)
 
-        # ── Bug #1 fix: Extract region data from breadcrumbs ─────────────
+        # ── BUG #4 fix: Extract region data from breadcrumbs ─────────────
+        # Breadcrumb order: [0]=FOOTBALL, [1]=COUNTRY (e.g. ALBANIA)
+        # Uses s.breadcrumb_links from knowledge.json
         region_name = await page.evaluate("""(s) => {
-            const el = document.querySelector(s.region_name);
-            return el ? el.innerText.trim() : '';
+            const links = document.querySelectorAll(s.breadcrumb_links);
+            if (links.length >= 2) return links[1].innerText.trim();
+            if (links.length >= 1) return links[0].innerText.trim();
+            return '';
         }""", selectors)
 
         region_flag_url = await page.evaluate("""(s) => {
-            const el = document.querySelector(s.region_flag);
-            return el ? (el.src || el.getAttribute('data-src') || '') : '';
+            const links = document.querySelectorAll(s.breadcrumb_links);
+            const target = links.length >= 2 ? links[1] : links[0];
+            if (!target) return '';
+            // Try region_flag_img selector first, then fallback to inline img
+            const img = document.querySelector(s.region_flag_img) || target.querySelector('img');
+            return img ? (img.src || img.getAttribute('data-src') || '') : '';
         }""", selectors)
 
-        region_url_href = await page.evaluate("""() => {
-            const el = document.querySelector('.breadcrumb__link');
+        region_url_href = await page.evaluate("""(s) => {
+            const links = document.querySelectorAll(s.breadcrumb_links);
+            const el = links.length >= 2 ? links[1] : links[0];
             if (!el) return '';
             const href = el.getAttribute('href') || '';
             return href.startsWith('http') ? href : (href ? 'https://www.flashscore.com' + href : '');
-        }""")
+        }""", selectors)
 
         if region_name:
             print(f"    [Region] {region_name}")
@@ -755,7 +770,7 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
         season = await page.evaluate(EXTRACT_SEASON_JS, selectors)
         print(f"    [Season] {season or '(not found)'}")
 
-        # ── Bug #7 fix: Construct region_league ──────────────────────────
+        # ── Construct region_league ──────────────────────────────────────
         region_league = f"{region_name}: {name}" if region_name else name
 
         # ── Update league in DB with all extracted data ───────────────────
@@ -834,7 +849,6 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
     except Exception as e:
         print(f"\n  [{idx}/{total}] [FAIL] {name} FAILED: {e}")
         traceback.print_exc()
-        # Bug #6 fix: Do NOT mark as processed on failure
     finally:
         await page.close()
 
@@ -851,19 +865,17 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
     Args:
         limit: Max number of leagues to process (after offset)
         offset: Number of leagues to skip from the start (0-indexed)
-        weekly: If True, lightweight mode — MAX_SHOW_MORE=2, skip image downloads
-                (unless team/league has no crest). Used by weekly scheduler.
+        reset: Reset all leagues to unprocessed before starting
+        num_seasons: Number of past seasons to extract per league
+        all_seasons: If True, extract ALL available seasons
+        weekly: If True, only process leagues updated >7 days ago
         target_season: If set, extract ONLY the Nth most recent past season (1-indexed)
     """
-    global MAX_SHOW_MORE
-    if weekly:
-        MAX_SHOW_MORE = 2
-        reset = True  # Re-process all leagues for weekly refresh
     print("\n" + "=" * 60)
     print("  FLASHSCORE LEAGUE ENRICHMENT -> SQLite")
     print("=" * 60)
 
-    # ── Initialize DB (main connection for seed/summary only) ────────────
+    # ── Initialize DB ────────────────────────────────────────────────────
     conn = init_db()
     print(f"  [DB] Initialized at {os.path.abspath(conn.execute('PRAGMA database_list').fetchone()[2])}")
 
@@ -877,31 +889,22 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
 
     # ── Get unprocessed leagues ──────────────────────────────────────────
     leagues = get_unprocessed_leagues(conn)
-    # Apply offset first, then limit
     if offset > 0:
         leagues = leagues[offset:]
     if limit:
         leagues = leagues[:limit]
 
     if not leagues:
-        if offset > 0:
-            print(f"\n  [Done] No leagues in range (offset={offset}, limit={limit}). Check total league count.")
-        else:
-            print("\n  [Done] All leagues have been processed. Use --reset to reprocess.")
+        print("\n  [Done] All leagues have been processed. Use --reset to reprocess.")
         return
 
     total = len(leagues)
     mode_label = "current season"
-    if weekly:
-        mode_label = "WEEKLY refresh (light)"
-    elif target_season is not None:
-        mode_label = f"season #{target_season} only"
-    elif all_seasons:
+    if all_seasons:
         mode_label = "ALL seasons"
     elif num_seasons > 0:
         mode_label = f"last {num_seasons} seasons"
-    range_label = f", range {offset+1}-{offset+total}" if offset > 0 else ""
-    print(f"\n  [Enrich] {total} leagues to process ({mode_label}{range_label}, concurrency={MAX_CONCURRENCY})")
+    print(f"\n  [Enrich] {total} leagues to process ({mode_label}, concurrency={MAX_CONCURRENCY})")
 
     # ── Ensure crest directories exist (from project root) ───────────────
     os.makedirs(os.path.join(BASE_DIR, LEAGUE_CRESTS_DIR), exist_ok=True)
@@ -919,58 +922,22 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
             timezone_id="Africa/Lagos",
         )
 
-        # ── Progress tracking with 20% cloud sync ────────────────────────
-        from Data.Access.sync_manager import run_full_sync
+        # Process leagues with concurrency control
         sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
-        completed_count = 0
-        sync_milestones = set()
-        # Pre-calculate 20% milestone thresholds (at 20%, 40%, 60%, 80%)
-        for pct in [20, 40, 60, 80]:
-            milestone = max(1, (total * pct) // 100)
-            sync_milestones.add(milestone)
-
-        progress_lock = asyncio.Lock()
-
         async def _worker(league, idx):
-            nonlocal completed_count
-            # Bug #3 fix: Per-worker SQLite connection
-            worker_conn = get_connection()
-            try:
-                async with sem:
-                    await enrich_single_league(
-                        context, league, worker_conn, idx, total,
-                        num_seasons=num_seasons, all_seasons=all_seasons,
-                        target_season=target_season,
-                    )
-            finally:
-                worker_conn.close()
-            # Track progress and trigger sync at milestones
-            async with progress_lock:
-                completed_count += 1
-                if completed_count in sync_milestones:
-                    pct = (completed_count * 100) // total
-                    print(f"\n  [SYNC] {pct}% milestone ({completed_count}/{total}) — syncing to Supabase...")
-                    try:
-                        await run_full_sync(session_name=f"Enrich {pct}%")
-                        print(f"  [SYNC] {pct}% sync complete.")
-                    except Exception as e:
-                        print(f"  [SYNC] {pct}% sync failed (continuing): {e}")
+            async with sem:
+                await enrich_single_league(
+                    context, league, conn, idx, total,
+                    num_seasons=num_seasons, all_seasons=all_seasons,
+                    target_season=target_season,
+                )
 
         tasks = [_worker(lg, i) for i, lg in enumerate(leagues, 1)]
         await asyncio.gather(*tasks)
 
         await context.close()
         await browser.close()
-
-    # ── Final 100% cloud sync ─────────────────────────────────────────
-    print(f"\n  [SYNC] 100% — final cloud sync...")
-    try:
-        from Data.Access.sync_manager import run_full_sync
-        await run_full_sync(session_name="Enrich 100%")
-        print(f"  [SYNC] Final sync complete.")
-    except Exception as e:
-        print(f"  [SYNC] Final sync failed: {e}")
 
     # ── Final summary ────────────────────────────────────────────────────
     league_count = conn.execute("SELECT COUNT(*) FROM leagues").fetchone()[0]
@@ -993,36 +960,30 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Enrich Flashscore leagues -> SQLite")
-    parser.add_argument("--limit", type=str, default=None, help="Limit items processed. Single number (5) or range (501-1000)")
+    parser.add_argument("--limit", type=str, default=None,
+                        metavar='N or START-END',
+                        help='Limit items processed. Single number (5) or range (501-1000)')
     parser.add_argument("--reset", action="store_true", help="Reset all leagues to unprocessed")
     parser.add_argument("--seasons", type=int, default=0, help="Number of past seasons to extract (last N)")
-    parser.add_argument("--season", type=int, default=None, help="Target a specific Nth past season only (e.g., 1 = most recent)")
+    parser.add_argument("--season", type=int, default=None,
+                        metavar='N',
+                        help='Target a specific Nth past season only (e.g., 1 = most recent)')
     parser.add_argument("--all-seasons", action="store_true", help="Extract all available seasons")
-    parser.add_argument("--weekly", action="store_true", help="Weekly light refresh (MAX_SHOW_MORE=2, skip images)")
     args = parser.parse_args()
 
-    # Parse --limit: supports single int ("5") or range ("501-1000")
+    # Parse --limit: single int or range "START-END"
     limit_count = None
     offset = 0
     if args.limit:
         if '-' in args.limit:
-            parts = args.limit.split('-')
-            if len(parts) == 2:
-                try:
-                    start = int(parts[0])
-                    end = int(parts[1])
-                    offset = start - 1
-                    limit_count = end - start + 1
-                except ValueError:
-                    print("Error: --limit range must be integers, e.g., 501-1000")
-                    sys.exit(1)
+            parts = args.limit.split('-', 1)
+            start = int(parts[0].strip())
+            end = int(parts[1].strip())
+            offset = start - 1  # Convert 1-indexed to 0-indexed
+            limit_count = end - start + 1
         else:
-            try:
-                limit_count = int(args.limit)
-            except ValueError:
-                print("Error: --limit must be an integer or range (e.g., 5 or 501-1000)")
-                sys.exit(1)
+            limit_count = int(args.limit)
 
     asyncio.run(main(limit=limit_count, offset=offset, reset=args.reset,
                      num_seasons=args.seasons, all_seasons=args.all_seasons,
-                     weekly=args.weekly, target_season=args.season))
+                     target_season=args.season))

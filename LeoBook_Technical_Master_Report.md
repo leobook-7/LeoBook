@@ -66,6 +66,22 @@ LeoBook is an **autonomous sports prediction and betting system** comprised of t
 | `Scripts/enrich_leagues.py` | League metadata + Historical data (**`--limit range`**, **`--season N`** support) |
 | `Scripts/recommend_bets.py` | Recommendation engine |
 
+#### Enrichment Data Extraction Strategy
+
+| Data Point | Extraction Method | Source |
+|---|---|---|
+| `fs_league_id` | `window.leaguePageHeaderData.tournamentStageId` | Flashscore internal JS config |
+| `region` | 2nd `.breadcrumb__link` element (index 1) | Breadcrumb navigation |
+| `region_url` | `href` of 2nd `.breadcrumb__link` | Breadcrumb navigation |
+| `crest` | `img.heading__logo` `src` attribute | League page header |
+| `current_season` | `.heading__info` with year regex | League page header |
+| `match_link` | `<a class="eventRowLink" aria-describedby="g_1_ID">` | Sibling `<a>` of match row |
+| `team_id` | Parsed from `eventRowLink` href segments | Match link URL path |
+| `region_league` | `"{region}: {league_name}"` | Constructed from extracted region + league name |
+
+> [!IMPORTANT]
+> All CSS selectors MUST live in `Config/knowledge.json` and be accessed via `SelectorManager`. Zero hardcoded selectors in Python/JS code.
+
 ---
 
 ### 2.6 Command Line Enrichment & Range Targeting
@@ -81,6 +97,10 @@ For high-velocity data ingestion, Leo.py supports granular range and season targ
 
 > [!NOTE]
 > The `--limit` range syntax is 1-indexed (e.g., `501-1000` processes exactly 500 leagues starting from the 501st unprocessed item).
+
+> [!WARNING]
+> `region_flag` images cannot be downloaded — Flashscore uses CSS sprite backgrounds for country flags, not `<img>` tags. The `region_flag` column will remain NULL.
+> Team metadata columns (`country`, `city`, `stadium`) require visiting individual team profile pages — not part of current enrichment scope.
 
 ---
 

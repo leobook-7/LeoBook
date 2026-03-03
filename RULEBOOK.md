@@ -108,6 +108,15 @@ Every Python file MUST have this header format:
     - Use `--season N` to target the most recent historical season (N=1) rather than multiple seasons at once.
 - **Reasoning**: Prevents memory exhaustion in constrained environments (e.g., Codespaces) and allows for distributed processing if multiple LeoBook instances are run in parallel.
 
+### 2.11 Selector Compliance (Zero Hardcoded Selectors)
+
+- **Rule**: ALL CSS selectors used for web scraping MUST be defined in `Config/knowledge.json` and accessed via `Core.Intelligence.selector_manager.SelectorManager`. **Zero hardcoded selectors** in Python or JavaScript code files.
+- **Implementation**:
+    - Define selectors under the appropriate context key in `knowledge.json` (e.g., `fs_league_page`, `fs_match_page`).
+    - In Python, use `selector_mgr.get_all_selectors_for_context(CONTEXT)` to retrieve the full selector dict.
+    - In JS evaluation, pass the selectors dict as an argument and reference keys (e.g., `s.breadcrumb_links`, `s.match_link`).
+- **Reasoning**: Flashscore frequently changes class names and DOM structure. Centralizing selectors in one JSON file makes updates fast and auditable.
+
 ---
 
 ## 3. Frontend Architecture (Flutter/Dart)

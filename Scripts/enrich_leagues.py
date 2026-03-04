@@ -118,9 +118,10 @@ def schedule_image_download(url: str, dest_path: str) -> "Future":
 # ── Supabase storage upload helper ────────────────────────────────────────────
 _supabase_storage = None
 _supabase_url = ""
+_uploaded_crests = set()  # Dedup: track {bucket/remote_name} already uploaded this session
 
 def _init_supabase_storage():
-    """Initialize Supabase storage client (once). Returns (storage, url) or (None, '')."""
+    """Initialize Supabase storage client (once). Auto-creates buckets."""
     global _supabase_storage, _supabase_url
     if _supabase_storage is not None:
         return _supabase_storage, _supabase_url
@@ -130,6 +131,15 @@ def _init_supabase_storage():
         if client:
             _supabase_storage = client.storage
             _supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+            # Auto-create buckets if they don't exist
+            try:
+                existing = [b.name for b in _supabase_storage.list_buckets()]
+                for bucket in ("league-crests", "team-crests"):
+                    if bucket not in existing:
+                        _supabase_storage.create_bucket(bucket, options={"public": True})
+                        print(f"  [Supabase] Created bucket: {bucket}")
+            except Exception as e:
+                print(f"  [Supabase] Bucket check failed: {e}")
             return _supabase_storage, _supabase_url
     except Exception:
         pass
@@ -139,12 +149,16 @@ def _init_supabase_storage():
 
 def upload_crest_to_supabase(local_path: str, bucket: str, remote_name: str) -> str:
     """Upload a local crest file to Supabase storage. Returns public URL or ''.
-    
-    Args:
-        local_path: Absolute path to the local crest file
-        bucket: Supabase storage bucket name (e.g. 'league-crests', 'team-crests')
-        remote_name: Filename in the bucket (e.g. '1_17_myd3jn1a.png')
+    Deduplicates: skips if same bucket/filename already uploaded this session.
     """
+    key = f"{bucket}/{remote_name}"
+    if key in _uploaded_crests:
+        # Already uploaded this session — just return the URL
+        storage, sb_url = _init_supabase_storage()
+        if sb_url:
+            return f"{sb_url}/storage/v1/object/public/{key}"
+        return ""
+
     storage, sb_url = _init_supabase_storage()
     if not storage or not sb_url:
         return ""  # Supabase not available, fallback to local path
@@ -160,6 +174,7 @@ def upload_crest_to_supabase(local_path: str, bucket: str, remote_name: str) -> 
                 file=f,
                 file_options={"cache-control": "3600", "upsert": "true"}
             )
+        _uploaded_crests.add(key)
         public_url = f"{sb_url}/storage/v1/object/public/{bucket}/{remote_name}"
         return public_url
     except Exception as e:

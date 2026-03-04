@@ -1,0 +1,767 @@
+{
+  "leagues": {
+    "total_rows": 1281,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "league_id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "fs_league_id": {
+        "empty_count": 1200,
+        "fill_rate": "6.32%"
+      },
+      "country_code": {
+        "empty_count": 209,
+        "fill_rate": "83.68%"
+      },
+      "continent": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "name": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "crest": {
+        "empty_count": 1200,
+        "fill_rate": "6.32%"
+      },
+      "current_season": {
+        "empty_count": 1200,
+        "fill_rate": "6.32%"
+      },
+      "url": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "processed": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "region": {
+        "empty_count": 1200,
+        "fill_rate": "6.32%"
+      },
+      "region_flag": {
+        "empty_count": 1281,
+        "fill_rate": "0.00%"
+      },
+      "region_url": {
+        "empty_count": 1200,
+        "fill_rate": "6.32%"
+      },
+      "other_names": {
+        "empty_count": 1281,
+        "fill_rate": "0.00%"
+      },
+      "abbreviations": {
+        "empty_count": 1281,
+        "fill_rate": "0.00%"
+      },
+      "search_terms": {
+        "empty_count": 1281,
+        "fill_rate": "0.00%"
+      },
+      "date_updated": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      }
+    }
+  },
+  "sqlite_sequence": {
+    "total_rows": 3,
+    "columns": {
+      "name": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "seq": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      }
+    }
+  },
+  "teams": {
+    "total_rows": 929,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "team_id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "name": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "league_ids": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "crest": {
+        "empty_count": 13,
+        "fill_rate": "98.60%"
+      },
+      "country_code": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "url": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "hq_crest": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "country": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "city": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "stadium": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "other_names": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "abbreviations": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "search_terms": {
+        "empty_count": 929,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      }
+    }
+  },
+  "fixtures": {
+    "total_rows": 8429,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "fixture_id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "date": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "time": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "league_id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "home_team_id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "home_team_name": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "away_team_id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "away_team_name": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "home_score": {
+        "empty_count": 4299,
+        "fill_rate": "49.00%"
+      },
+      "away_score": {
+        "empty_count": 4299,
+        "fill_rate": "49.00%"
+      },
+      "extra": {
+        "empty_count": 7178,
+        "fill_rate": "14.84%"
+      },
+      "league_stage": {
+        "empty_count": 7,
+        "fill_rate": "99.92%"
+      },
+      "match_status": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "season": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "home_crest": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "away_crest": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "url": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "region_league": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "match_link": {
+        "empty_count": 8429,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      }
+    }
+  },
+  "predictions": {
+    "total_rows": 0,
+    "columns": {
+      "fixture_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "date": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "match_time": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "region_league": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_team": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_team": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_team_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_team_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "prediction": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "confidence": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "reason": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "xg_home": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "xg_away": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "btts": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "over_2_5": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "best_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "top_scores": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_form_n": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_form_n": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_tags": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_tags": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "h2h_tags": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "standings_tags": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "h2h_count": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "actual_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "outcome_correct": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "status": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "match_link": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "odds": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "market_reliability_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_crest_url": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_crest_url": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "recommendation_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "h2h_fixture_ids": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "form_fixture_ids": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "standings_snapshot": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "league_stage": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "generated_at": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "audit_log": {
+    "total_rows": 1,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "timestamp": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "event_type": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "description": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "balance_before": {
+        "empty_count": 1,
+        "fill_rate": "0.00%"
+      },
+      "balance_after": {
+        "empty_count": 1,
+        "fill_rate": "0.00%"
+      },
+      "stake": {
+        "empty_count": 1,
+        "fill_rate": "0.00%"
+      },
+      "status": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "100.00%"
+      }
+    }
+  },
+  "fb_matches": {
+    "total_rows": 0,
+    "columns": {
+      "site_match_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "date": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "time": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_team": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_team": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "league": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "url": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_extracted": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "fixture_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "matched": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "odds": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "booking_status": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "booking_details": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "booking_code": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "booking_url": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "status": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "live_scores": {
+    "total_rows": 0,
+    "columns": {
+      "fixture_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_team": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_team": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "home_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "away_score": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "minute": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "status": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "region_league": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "match_link": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "timestamp": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "accuracy_reports": {
+    "total_rows": 0,
+    "columns": {
+      "report_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "timestamp": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "volume": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "win_rate": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "return_pct": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "period": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "countries": {
+    "total_rows": 0,
+    "columns": {
+      "code": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "name": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "continent": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "capital": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "flag_1x1": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "flag_4x3": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "profiles": {
+    "total_rows": 0,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "email": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "username": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "full_name": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "avatar_url": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "tier": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "credits": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "created_at": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "updated_at": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "custom_rules": {
+    "total_rows": 0,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "user_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "name": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "description": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "is_active": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "logic": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "priority": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "created_at": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "updated_at": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  },
+  "rule_executions": {
+    "total_rows": 0,
+    "columns": {
+      "id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "rule_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "fixture_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "user_id": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "result": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "executed_at": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      },
+      "last_updated": {
+        "empty_count": 0,
+        "fill_rate": "0.00%"
+      }
+    }
+  }
+}

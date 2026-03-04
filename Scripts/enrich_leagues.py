@@ -6,15 +6,20 @@
 #   --refresh  Re-process stale leagues (>7 days old)
 #   --reset    Full reset — re-enrich ALL leagues from scratch
 #
+# Season targeting:
+#   --season N   Specific season by offset (0=current, 1=2024/2025, 2=2023/2024...)
+#   --seasons N  Last N past seasons (e.g. 5 = 2021-2025)
+#   --all-seasons  All available seasons
+#
 # Usage:
 #   python -m Scripts.enrich_leagues                     # Gap scan (default)
 #   python -m Scripts.enrich_leagues --limit 5           # First 5 with gaps
 #   python -m Scripts.enrich_leagues --limit 501-1000    # Range-based
+#   python -m Scripts.enrich_leagues --season 0          # Current season only
+#   python -m Scripts.enrich_leagues --season 1          # Most recent past season
+#   python -m Scripts.enrich_leagues --seasons 5         # Last 5 past seasons
 #   python -m Scripts.enrich_leagues --refresh           # Stale leagues only
 #   python -m Scripts.enrich_leagues --reset             # Full reset
-#   python -m Scripts.enrich_leagues --seasons 2         # Last 2 seasons per league
-#   python -m Scripts.enrich_leagues --season 1          # ONLY the most recent past season
-#   python -m Scripts.enrich_leagues --all-seasons       # All available seasons
 #
 # Features:
 #   - Workload announced at start
@@ -680,7 +685,8 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
     Args:
         num_seasons: Number of past seasons to extract (0 = current only)
         all_seasons: If True, extract ALL available seasons from archive
-        target_season: If set, extract ONLY the Nth most recent past season (1-indexed)
+        target_season: Season offset (0=current, 1=last past, 2=second past, etc.)
+                       When 0 or None, current season runs. When >=1, ONLY that archive season.
     """
     league_id = league["league_id"]
     name = league["name"]
@@ -833,12 +839,19 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
         )
         total_matches = fixtures_count + results_count
 
-        # ── Historical seasons (if requested) ────────────────────────────
-        if num_seasons > 0 or all_seasons or target_season is not None:
+        # ── Historical seasons (if requested) ────────────────────────
+        # --season 0 = current only (no archive), --season N = Nth past season only
+        # --seasons N = last N past seasons, --all-seasons = everything
+        need_archive = (
+            (target_season is not None and target_season >= 1) or
+            num_seasons > 0 or
+            all_seasons
+        )
+        if need_archive:
             archive_seasons = await get_archive_seasons(page, url)
 
-            if target_season is not None:
-                # Target a specific Nth season (1-indexed)
+            if target_season is not None and target_season >= 1:
+                # --season N: pick ONLY the Nth archive season (1=most recent past)
                 if target_season <= len(archive_seasons):
                     archive_seasons = [archive_seasons[target_season - 1]]
                     print(f"    [Season Target] Picking season #{target_season}: {archive_seasons[0].get('slug', '')}")
@@ -846,7 +859,7 @@ async def enrich_single_league(context, league: Dict[str, Any], conn,
                     print(f"    [Season Target] Season #{target_season} not available (only {len(archive_seasons)} found)")
                     archive_seasons = []
             elif num_seasons > 0:
-                # Take the last N most recent seasons (skip current which we already did)
+                # --seasons N: take the last N most recent archive seasons
                 archive_seasons = archive_seasons[:num_seasons]
 
             for s_idx, s in enumerate(archive_seasons, 1):
@@ -956,9 +969,12 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
     if all_seasons:
         mode_label = "ALL seasons"
     elif num_seasons > 0:
-        mode_label = f"last {num_seasons} seasons"
+        mode_label = f"last {num_seasons} past seasons"
     elif target_season is not None:
-        mode_label = f"season #{target_season} only"
+        if target_season == 0:
+            mode_label = "current season only"
+        else:
+            mode_label = f"season offset #{target_season} only"
     # ── Workload announcement ─────────────────────────────────────────────
     print(f"\n  [Enrich] {total} leagues to process ({scan_mode}, {mode_label}, concurrency={MAX_CONCURRENCY})")
     print(f"  [Workload] Leagues #{offset + 1} to #{offset + total}:")
@@ -1060,10 +1076,11 @@ if __name__ == "__main__":
                         help='Limit items processed. Single number (5) or range (501-1000)')
     parser.add_argument("--reset", action="store_true", help="Reset all leagues to unprocessed")
     parser.add_argument("--refresh", action="store_true", help="Re-process stale leagues (>7 days old)")
-    parser.add_argument("--seasons", type=int, default=0, help="Number of past seasons to extract (last N)")
+    parser.add_argument("--seasons", type=int, default=0,
+                        help="Number of past seasons to extract (e.g. 5 = last 5 past seasons)")
     parser.add_argument("--season", type=int, default=None,
                         metavar='N',
-                        help='Target a specific Nth past season only (e.g., 1 = most recent)')
+                        help='Season offset: 0=current, 1=most recent past, 2=second past, etc.')
     parser.add_argument("--all-seasons", action="store_true", help="Extract all available seasons")
     args = parser.parse_args()
 

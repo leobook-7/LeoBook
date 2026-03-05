@@ -67,10 +67,10 @@ from Data.Access.db_helpers import init_csvs, log_audit_event
 from Data.Access.sync_manager import SyncManager, run_full_sync
 from Data.Access.league_db import init_db
 from Scripts.enrich_all_schedules import enrich_all_schedules
-from Modules.Flashscore.manager import run_flashscore_analysis, run_flashscore_offline_repredict, run_flashscore_schedule_only
 from Modules.Flashscore.fs_live_streamer import live_score_streamer
 from Modules.FootballCom.fb_manager import run_odds_harvesting, run_automated_booking
 from Scripts.recommend_bets import get_recommendations
+from Core.Intelligence.prediction_pipeline import run_predictions, get_weekly_fixtures
 from Scripts.enrich_leagues import main as run_league_enricher
 from Modules.Assets.asset_manager import sync_team_assets, sync_league_assets, sync_region_flags
 from Scripts.football_logos import download_all_logos
@@ -190,13 +190,66 @@ async def run_prologue_p3():
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=3.0)
 async def run_chapter_1_p1(p):
-    """Chapter 1 Page 1: URL Resolution & Odds Harvesting (Football.com).
-    Matches Flashscore fixtures to Football.com fixtures and harvests odds."""
+    """Chapter 1 Page 1: Smart SearchDict + URL Resolution & Odds Harvesting.
+    V7: Schedules already exist from enrichment. No Flashscore browser scraping.
+    1. Smart SearchDict: enrich only this week's teams that need it
+    2. Football.com URL resolution + odds extraction (no login)"""
     log_state(chapter="Ch1 P1", action="URL Resolution & Odds Harvesting")
     try:
         print("\n" + "=" * 60)
         print("  CHAPTER 1 PAGE 1: URL Resolution & Odds Harvesting")
         print("=" * 60)
+
+        # --- Smart SearchDict: only this week's unmatched teams ---
+        try:
+            from Data.Access.league_db import init_db
+            from Data.Access.db_helpers import _get_conn
+            conn = _get_conn()
+            weekly_fixtures = get_weekly_fixtures(conn)
+
+            if weekly_fixtures:
+                # Collect unique team IDs/names from this week's fixtures
+                team_set = set()
+                for f in weekly_fixtures:
+                    hid = f.get('home_team_id', '')
+                    aid = f.get('away_team_id', '')
+                    hname = f.get('home_team_name', '')
+                    aname = f.get('away_team_name', '')
+                    if hid and hname:
+                        team_set.add((hid, hname))
+                    if aid and aname:
+                        team_set.add((aid, aname))
+
+                # Filter to unenriched teams only
+                from Data.Access.league_db import query_all
+                teams_data = query_all(conn, 'teams')
+                enriched_ids = set()
+                for row in teams_data:
+                    st = str(row.get('search_terms', '') or '').strip()
+                    abbr = str(row.get('abbreviations', '') or '').strip()
+                    tid = str(row.get('team_id', ''))
+                    if tid and st and st != '[]' and abbr and abbr != '[]':
+                        enriched_ids.add(tid)
+
+                unenriched = [{'team_id': tid, 'team_name': tname}
+                              for tid, tname in team_set if tid not in enriched_ids]
+
+                if unenriched:
+                    from Scripts.build_search_dict import enrich_batch_teams_search_dict
+                    cap = min(len(unenriched), 100)
+                    print(f"    [SearchDict] Enriching {cap}/{len(unenriched)} unenriched teams for this week...")
+                    await enrich_batch_teams_search_dict(unenriched[:cap])
+                    print(f"    [SearchDict] Done.")
+                else:
+                    print(f"    [SearchDict] All {len(team_set)} teams for this week already enriched.")
+
+                print(f"    [Fixtures] {len(weekly_fixtures)} scheduled matches found for next 7 days.")
+            else:
+                print("    [Fixtures] No scheduled matches found for next 7 days.")
+        except Exception as e:
+            print(f"    [SearchDict] Non-fatal error: {e}")
+
+        # --- Football.com Odds Harvesting (no login) ---
         await run_odds_harvesting(p)
         log_audit_event("CH1_P1", "URL resolution and odds harvesting completed.", status="success")
         return True
@@ -208,17 +261,19 @@ async def run_chapter_1_p1(p):
 
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=3.0)
-async def run_chapter_1_p2(p, scheduler: TaskScheduler = None,
+async def run_chapter_1_p2(p=None, scheduler: TaskScheduler = None,
                           refresh: bool = False, target_dates: list = None):
     """Chapter 1 Page 2: Predictions (Rule Engine + RL Ensemble).
+    V7: Pure DB computation — NO browser. H2H + form + standings from schedules table.
     Max 1 prediction per team per 7 days — remaining scheduled for day-before."""
     log_state(chapter="Ch1 P2", action="Predictions")
     try:
         print("\n" + "=" * 60)
-        print("  CHAPTER 1 PAGE 2: Predictions")
+        print("  CHAPTER 1 PAGE 2: Predictions (Pure DB Computation)")
         print("=" * 60)
-        await run_flashscore_analysis(p, refresh=refresh, target_dates=target_dates)
-        log_audit_event("CH1_P2", "Predictions completed.", status="success")
+        predictions = await run_predictions(scheduler=scheduler)
+        count = len(predictions) if predictions else 0
+        log_audit_event("CH1_P2", f"Predictions completed: {count} generated.", status="success")
     except Exception as e:
         print(f"  [Error] Chapter 1 Page 2 failed: {e}")
         log_audit_event("CH1_P2", f"Failed: {e}", status="failed")
@@ -226,18 +281,23 @@ async def run_chapter_1_p2(p, scheduler: TaskScheduler = None,
 
 @AIGOSuite.aigo_retry(max_retries=2, delay=2.0)
 async def run_chapter_1_p3():
-    """Chapter 1 Page 3: Recommendations & Final Sync."""
+    """Chapter 1 Page 3: Recommendations & Final Sync.
+    V7: Rank predictions by reliability, flag top for Ch2, then watermark delta sync."""
     log_state(chapter="Ch1 P3", action="Recommendations & Final Sync")
     try:
         print("\n" + "=" * 60)
         print("  CHAPTER 1 PAGE 3: Recommendations & Final Sync")
         print("=" * 60)
+
+        # 1. Generate recommendations (ranked by recommendation_score)
+        await get_recommendations(save_to_file=True)
+
+        # 2. Watermark delta sync (single sync for the entire chapter)
         sync_ok = await run_full_sync(session_name="Chapter 1 Final")
         if not sync_ok:
             print("  [AIGO] Sync parity issues detected. Logged for review.")
             log_audit_event("CH1_P3_SYNC", "Sync parity issues detected.", status="partial_failure")
 
-        await get_recommendations(save_to_file=True)
         log_audit_event("CH1_P3", "Recommendations and final sync completed.", status="success")
     except Exception as e:
         print(f"  [Error] Chapter 1 Page 3 failed: {e}")

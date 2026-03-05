@@ -60,15 +60,35 @@ async def _create_session_no_login(playwright: Playwright):
 @AIGOSuite.aigo_retry(max_retries=2, delay=5.0)
 async def run_odds_harvesting(playwright: Playwright):
     """
-    Chapter 1 Page 2: Odds Discovery & URL Resolution.
+    Chapter 1 Page 1: URL Resolution & Odds Harvesting (V7).
+    Uses scheduled fixtures (from enrichment) — NOT predictions.
     Resolves Flashscore → Football.com URLs. Harvests booking codes per match.
-    Does NOT place bets.
+    Does NOT place bets. Does NOT require login.
     """
-    print("\n--- Running Football.com Odds Harvesting (Chapter 1C) ---")
+    print("\n--- Running Football.com Odds Harvesting (Chapter 1 P1) ---")
 
-    predictions_by_date = await get_pending_predictions_by_date()
-    if not predictions_by_date:
+    # V7: Get scheduled fixtures from the schedules table (next 7 days)
+    from Core.Intelligence.prediction_pipeline import get_weekly_fixtures
+    from Data.Access.league_db import init_db
+    conn = init_db()
+    weekly_fixtures = get_weekly_fixtures(conn)
+
+    if not weekly_fixtures:
+        print("  [Info] No scheduled fixtures found for the next 7 days.")
         return
+
+    # Group fixtures by date
+    fixtures_by_date = {}
+    for f in weekly_fixtures:
+        d_str = f.get('date', '')
+        if d_str:
+            fixtures_by_date.setdefault(d_str, []).append(f)
+
+    if not fixtures_by_date:
+        print("  [Info] No future fixtures found.")
+        return
+
+    print(f"  [Fixtures] {len(weekly_fixtures)} matches across {len(fixtures_by_date)} days.")
 
     max_restarts = 3
     restarts = 0
@@ -78,20 +98,20 @@ async def run_odds_harvesting(playwright: Playwright):
         try:
             print(f"  [System] Launching Harvest Session (Restart {restarts}/{max_restarts})...")
             context, page = await _create_session_no_login(playwright)
-            log_state(chapter="Chapter 1C", action="Harvesting odds")
+            log_state(chapter="Ch1 P1", action="Harvesting odds")
 
-            for target_date, day_preds in sorted(predictions_by_date.items()):
-                print(f"\n--- Date: {target_date} ({len(day_preds)} matches) ---")
+            for target_date, day_fixtures in sorted(fixtures_by_date.items()):
+                print(f"\n--- Date: {target_date} ({len(day_fixtures)} matches) ---")
 
                 # 1. URL Resolution (Fuzzy match FS → FB)
-                matched_urls = await resolve_urls(page, target_date, day_preds)
+                matched_urls = await resolve_urls(page, target_date)
                 if not matched_urls:
                     continue
 
                 # 2. Odds Selection & Code Extraction
-                print(f"  [Chapter 1C] Starting odds discovery for {target_date}...")
+                print(f"  [Ch1 P1] Starting odds discovery for {target_date}...")
                 from Modules.FootballCom.booker.booking_code import harvest_booking_codes
-                await harvest_booking_codes(page, matched_urls, day_preds, target_date)
+                await harvest_booking_codes(page, matched_urls, day_fixtures, target_date)
 
             break  # Success exit
 

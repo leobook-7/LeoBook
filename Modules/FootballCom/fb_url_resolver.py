@@ -12,7 +12,6 @@ from Data.Access.db_helpers import (
     load_site_matches, save_site_matches, update_site_match_status, 
     get_all_schedules, MATCH_REGISTRY_CSV
 )
-from Data.Access.sync_manager import run_full_sync
 from .navigator import navigate_to_schedule, select_target_date
 from .extractor import extract_league_matches
 from .match_resolver import GrokMatcher
@@ -80,14 +79,7 @@ async def resolve_urls(page: Page, target_date: str) -> dict:
             )
             
             resolved_count += 1
-            if resolved_count % 10 == 0:
-                print(f"\n    [Progressive Sync] Reached {resolved_count} mappings. Triggering cloud sync...")
-                await run_full_sync()
     
-    # Final sync if any mappings occurred
-    if resolved_count > 0 and resolved_count % 10 != 0:
-        await run_full_sync()
-
     print(f"    [URL Resolver] Completed. Resolved {resolved_count} new mappings.")
     return mappings
 

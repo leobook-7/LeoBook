@@ -359,7 +359,7 @@ class SyncManager:
             print(f"   [{remote_table}] FORCE FULL PULL -- counting... (paginating until exhausted)")
 
         total_pulled = 0
-        page_size = 15000
+        page_size = 15000  # Supabase may return fewer; we paginate by actual len(rows)
         offset = 0
         disable_pbar = not logger.isEnabledFor(logging.INFO)
         pbar = tqdm(
@@ -383,9 +383,8 @@ class SyncManager:
                     total_pulled += len(rows)
                     pbar.update(len(rows))
 
-                    if len(rows) < page_size:
-                        break
-                    offset += page_size
+                    # Advance by ACTUAL rows received, not requested page_size
+                    offset += len(rows)
                 except Exception as batch_err:
                     err_str = str(batch_err)
                     if 'PGRST205' in err_str or 'Could not find the table' in err_str:

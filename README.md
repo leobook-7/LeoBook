@@ -3,7 +3,7 @@
 **Developer**: Materialless LLC
 **Chief Engineer**: Emenike Chinenye James
 **Powered by**: Multi-Key Gemini Rotation (25+ Keys, 6 Models) · xAI Grok API (Optional)
-**Architecture**: Autonomous High-Velocity Architecture v7.2 (Data Readiness Gates + Task Scheduler + Neural RL)
+**Architecture**: Autonomous High-Velocity Architecture v7.3 (Supervisor-Worker + Neuro-Symbolic Ensemble + Data Quality v7.1)
 
 ---
 
@@ -11,38 +11,37 @@
 
 LeoBook is an **autonomous sports prediction and betting system** with two halves:
 
-| Component | Tech | Purpose |
-|-----------|------|---------|
-| `Leo.py` | Python 3.12 + Playwright + PyTorch | Autonomous data extraction, rule-based + neural RL prediction, odds harvesting, automated bet placement, and dynamic task scheduling |
-| `leobookapp/` | Flutter/Dart | Cross-platform dashboard with "Telegram-grade" UI density, Liquid Glass aesthetics, and real-time streaming |
+| Component     | Tech                               | Purpose                                                                                                                              |
+| ------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Leo.py`      | Python 3.12 + Playwright + PyTorch | Autonomous data extraction, rule-based + neural RL prediction, odds harvesting, automated bet placement, and dynamic task scheduling |
+| `leobookapp/` | Flutter/Dart                       | Cross-platform dashboard with "Telegram-grade" UI density, Liquid Glass aesthetics, and real-time streaming                          |
 
-**Leo.py** is an **autonomous orchestrator** powered by a **dynamic Task Scheduler** (`Core/System/scheduler.py`). It no longer relies on a static 6h loop; instead, it wakes up at target task times (e.g., Weekly Enrichment at Monday 2:26am) or operates at default intervals. The system enforces **Data Readiness Gates** (Prologue P1-P3) to ensure data integrity before predictions. **Standings** are now computed on-the-fly via a Postgres VIEW in Supabase. Cloud sync uses **watermark-based delta detection** — only rows modified since the last sync are compared, not full table scans.
+**Leo.py** is an **autonomous orchestrator** powered by a **Supervisor-Worker Pattern** (`Core/System/supervisor.py`). It replaces the monolithic loop with isolated chapter workers (`Core/System/pipeline_workers.py`), ensuring failure isolation, retries, and state persistence. The system enforces **Data Readiness Gates** (Prologue P1-P3) with **materialized readiness cache** for O(1) checks. **Data Quality & Season Completeness** are tracked autonomously, protecting the pipeline from malformed IDs and missing historical data. Cloud sync uses **watermark-based delta detection**.
 
 For the complete file inventory and step-by-step execution trace, see [LeoBook_Technical_Master_Report.md](LeoBook_Technical_Master_Report.md).
 
 ---
 
-## System Architecture (v7.0 Autonomous Pipeline)
+## System Architecture (v7.1 Autonomous Pipeline)
 
 ```
 Leo.py (Orchestrator)
+├── Supervisor (System Control):
+│   └── system_state table (persistence)
 ├── Startup (Initialization):
-│   └── Push-Only Sync → Supabase (auto-bootstrap if local DB empty)
-├── Task Scheduler:
-│   └── Execute Pending Tasks (Weekly Enrichment, Day-before Predictions)
-├── Prologue (Data Readiness Gates):
-│   ├── P1: League/Team Threshold Check (90% Coverage)
-│   ├── P2: Historical Seasons Check (2+ distinct seasons including current)
-│   └── P3: RL Adapter Readiness Check
+│   └── Push-Only Sync → Supabase (auto-bootstrap)
+├── Prologue (Materialized Readiness Gates):
+│   ├── P1: Quantity & ID Gate (O(1) lookup)
+│   ├── P2: History & Quality Gate (O(1) lookup)
+│   └── P3: AI Readiness Gate (O(1) lookup)
 ├── Chapter 1 (Prediction Pipeline):
-│   ├── Ch1 P1: URL Resolution & Odds Harvesting (Football.com)
-│   ├── Ch1 P2: Predictions (Pure DB — Rule Engine + Neural RL Ensemble, no browser)
-│   │   └── Smart Scheduling: Max 1 per team/week (remaining vs Scheduler)
+│   ├── Ch1 P1: URL Resolution & Odds Harvesting
+│   ├── Ch1 P2: Predictions (Neuro-Symbolic Ensemble: Rule + RL)
 │   └── Ch1 P3: Recommendations & Final Chapter Sync
 ├── Chapter 2 (Betting Automation):
-│   ├── Ch2 P1: Automated Booking (Football.com)
+│   ├── Ch2 P1: Automated Booking
 │   └── Ch2 P2: Funds & Withdrawal Check
-└── Live Streamer: Isolated parallel task — Live Scores + Outcome Review + Accuracy Report (Waits for Bootstrap Sync)
+└── Live Streamer: Isolated parallel task (60s updates + outcome review)
 ```
 
 ### Key Subsystems
@@ -132,6 +131,10 @@ python Leo.py --chapter 2   # Betting automation
 python Leo.py --review      # Outcome review (Finished matches)
 python Leo.py --recommend   # Recommendations generation
 python Leo.py --streamer    # Standalone Live Multi-Tasker (Scores/Review/Reports)
+python Leo.py --data-quality             # Gap scan + Invalid ID resolution + Completeness init
+python Leo.py --season-completeness       # Show summary of league-season coverage
+python Leo.py --bypass-cache             # Skip readiness_cache for O(N) gate scan
+python Leo.py --set-expected-matches <id> <season> <num> # Manual override for P2 logic
 python Leo.py --enrich-leagues            # Smart gap scan (only leagues with missing data)
 python Leo.py --enrich-leagues --limit 5  # Gap scan first 5 leagues
 python Leo.py --enrich-leagues --limit 501-1000 # Range-based gap scan
@@ -148,27 +151,27 @@ python Leo.py --help                    # Comprehensive CLI command catalog
 
 ## Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `GEMINI_API_KEY` | Multi-key rotation for AI analysis |
-| `SUPABASE_URL` | Supabase endpoint |
-| `SUPABASE_SERVICE_KEY` | Backend service key (Admin) |
-| `FB_PHONE` / `FB_PASSWORD` | Betting platform credentials |
-| `LEO_CYCLE_WAIT_HOURS` | Default sleep between autonomous tasks (default: 6) |
+| Variable                   | Purpose                                             |
+| -------------------------- | --------------------------------------------------- |
+| `GEMINI_API_KEY`           | Multi-key rotation for AI analysis                  |
+| `SUPABASE_URL`             | Supabase endpoint                                   |
+| `SUPABASE_SERVICE_KEY`     | Backend service key (Admin)                         |
+| `FB_PHONE` / `FB_PASSWORD` | Betting platform credentials                        |
+| `LEO_CYCLE_WAIT_HOURS`     | Default sleep between autonomous tasks (default: 6) |
 
 ---
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [RULEBOOK.md](RULEBOOK.md) | **MANDATORY** — Engineering standards & philosophy |
-| [PROJECT_STAIRWAY.md](PROJECT_STAIRWAY.md) | Capital compounding strategy — the "why" behind LeoBook |
+| Document                                                                 | Purpose                                                          |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| [RULEBOOK.md](RULEBOOK.md)                                               | **MANDATORY** — Engineering standards & philosophy               |
+| [PROJECT_STAIRWAY.md](PROJECT_STAIRWAY.md)                               | Capital compounding strategy — the "why" behind LeoBook          |
 | [LeoBook_Technical_Master_Report.md](LeoBook_Technical_Master_Report.md) | File inventory, execution flow, safety guardrails, observability |
-| [leobook_algorithm.md](leobook_algorithm.md) | Algorithm reference (RuleEngine + Neural RL) |
-| [AIGO_Learning_Guide.md](AIGO_Learning_Guide.md) | Self-healing extraction pipeline |
+| [leobook_algorithm.md](leobook_algorithm.md)                             | Algorithm reference (RuleEngine + Neural RL)                     |
+| [AIGO_Learning_Guide.md](AIGO_Learning_Guide.md)                         | Self-healing extraction pipeline                                 |
 
 ---
 
-*Last updated: March 6, 2026 (v7.2 — Push-Only Sync + Safety Guardrails Design + 13-Discrepancy Audit Resolution + PROJECT_STAIRWAY)*
+*Last updated: March 7, 2026 (v7.3 — Supervisor-Worker + Neuro-Symbolic Ensemble + Data Quality v7.1)*
 *LeoBook Engineering Team — Materialless LLC*

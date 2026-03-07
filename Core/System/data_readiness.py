@@ -9,7 +9,7 @@ import json
 import logging
 import asyncio
 import time
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 from Core.Utils.constants import now_ng
 from Data.Access.league_db import init_db, query_all
@@ -36,135 +36,228 @@ def _get_expected_league_count() -> int:
     return 0
 
 
+def invalidate_cache(gate_id: str):
+    """Clear a specific gate cache for forced re-scan."""
+    from Data.Access.league_db import init_db
+    conn = init_db()
+    conn.execute("DELETE FROM readiness_cache WHERE gate_id = ?", (gate_id,))
+    conn.commit()
+    logger.info(f"[Cache] Invalidated gate: {gate_id}")
+
+def update_cache(gate_id: str, is_ready: bool, details: Dict):
+    """Persist check results to the materialized cache table."""
+    from Data.Access.league_db import init_db
+    from Core.Utils.constants import now_ng
+    conn = init_db()
+    conn.execute("""
+        INSERT OR REPLACE INTO readiness_cache (gate_id, is_ready, details, updated_at)
+        VALUES (?, ?, ?, ?)
+    """, (gate_id, 1 if is_ready else 0, json.dumps(details), now_ng().isoformat()))
+    conn.commit()
+
+def _read_cache(gate_id: str) -> Optional[Tuple[bool, Dict]]:
+    """Internal: Reads from readiness_cache if not bypassed."""
+    # Check if --bypass-cache is in CLI
+    import sys
+    if '--bypass-cache' in sys.argv:
+        return None
+        
+    from Data.Access.league_db import init_db
+    conn = init_db()
+    try:
+        row = conn.execute("SELECT is_ready, details FROM readiness_cache WHERE gate_id = ?", (gate_id,)).fetchone()
+        if row:
+            return bool(row[0]), json.loads(row[1])
+    except Exception:
+        pass
+    return None
+
 def check_leagues_ready(conn=None) -> Tuple[bool, Dict]:
     """Check if leagues >= 90% of leagues.json AND teams >= 5 per processed league.
-
-    Returns:
-        (is_ready, stats_dict)
+    READS FROM CACHE FIRST. Original scan logic is the fallback.
     """
+    cached = _read_cache('PROLOGUE_P1')
+    if cached:
+        is_ready, stats = cached
+        print(f"  [P1 ✓] (Cached) Readiness: {'READY' if is_ready else 'NOT READY'}")
+        return is_ready, stats
+
+    # FALLBACK: Original O(N) scan logic
     conn = conn or init_db()
     expected = _get_expected_league_count()
     actual_leagues = conn.execute("SELECT COUNT(*) FROM leagues").fetchone()[0]
     processed = conn.execute("SELECT COUNT(*) FROM leagues WHERE processed = 1").fetchone()[0]
     team_count = conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
 
-    # Threshold: 90% of expected leagues
     threshold = int(expected * 0.9) if expected > 0 else 1000
     leagues_ok = actual_leagues >= threshold
-
-    # Teams: at least 5 per processed league (rough check)
     teams_per_league = (team_count / max(processed, 1)) if processed > 0 else 0
     teams_ok = teams_per_league >= 5 or team_count >= 5000
 
-    is_ready = leagues_ok and teams_ok
+    # NEW: Invalid ID Check (v7.1 Extension)
+    from Core.System.data_quality import InvalidIDScanner
+    from Core.System.gap_resolver import InvalidIDResolver
+    
+    print("  [P1] Validating Flashscore IDs...")
+    league_invalids = InvalidIDScanner.scan_invalid_ids("leagues", "fs_league_id")
+    invalid_rate = (len(league_invalids) / max(actual_leagues, 1)) * 100
+    
+    if invalid_rate > 5:
+        print(f"  [P1] Invalid ID rate ({invalid_rate:.1f}%) above 5%. Running Resolver...")
+        InvalidIDResolver.attempt_local_resolution("leagues", league_invalids)
+        InvalidIDResolver.stage_invalid_ids("leagues", league_invalids)
+        
+        # Re-evaluate
+        league_invalids = InvalidIDScanner.scan_invalid_ids("leagues", "fs_league_id")
+        invalid_rate = (len(league_invalids) / max(actual_leagues, 1)) * 100
+    
+    ids_ok = invalid_rate <= 5
 
+    is_ready = leagues_ok and teams_ok and ids_ok
     stats = {
-        "expected_leagues": expected,
-        "actual_leagues": actual_leagues,
-        "threshold": threshold,
-        "processed_leagues": processed,
-        "team_count": team_count,
-        "teams_per_league": round(teams_per_league, 1),
-        "leagues_ok": leagues_ok,
-        "teams_ok": teams_ok,
-        "ready": is_ready,
+        "expected_leagues": expected, "actual_leagues": actual_leagues,
+        "threshold": threshold, "processed_leagues": processed,
+        "team_count": team_count, "teams_per_league": round(teams_per_league, 1),
+        "invalid_id_rate": round(invalid_rate, 1),
+        "leagues_ok": leagues_ok, "teams_ok": teams_ok, "ids_ok": ids_ok, "ready": is_ready,
     }
 
     if is_ready:
-        print(f"  [P1 ✓] Leagues: {actual_leagues}/{expected} ({actual_leagues*100//max(expected,1)}%), "
-              f"Teams: {team_count} ({teams_per_league:.0f}/league)")
+        print(f"  [P1 ✓] Leagues: {actual_leagues}/{expected}, Teams: {team_count}, IDs: OK ({invalid_rate:.1f}%)")
     else:
-        print(f"  [P1 ✗] BELOW THRESHOLD — Leagues: {actual_leagues}/{threshold} needed, "
-              f"Teams: {team_count} ({teams_per_league:.0f}/league)")
+        reasons = []
+        if not leagues_ok: reasons.append(f"Leagues < {threshold}")
+        if not teams_ok: reasons.append(f"Teams/League < 5")
+        if not ids_ok: reasons.append(f"Invalid IDs > 5% ({invalid_rate:.1f}%)")
+        print(f"  [P1 ✗] NOT READY: {', '.join(reasons)}")
 
+    # Update cache after scan
+    update_cache('PROLOGUE_P1', is_ready, stats)
     return is_ready, stats
-
 
 def check_seasons_ready(conn=None, min_seasons: int = 2) -> Tuple[bool, Dict]:
-    """Check if processed leagues have >= min_seasons of historical fixture data.
-
-    Returns:
-        (is_ready, stats_dict)
     """
+    PROLOGUE P2: Data Quality & Season Completeness.
+    Runs DataQualityScanner, GapResolver (IMMEDIATE), and SeasonCompletenessTracker.
+    """
+    cached = _read_cache('PROLOGUE_P2')
+    if cached:
+        is_ready, stats = cached
+        print(f"  [P2 ✓] (Cached) Readiness: {'READY' if is_ready else 'NOT READY'}")
+        return is_ready, stats
+
+    from Core.System.data_quality import DataQualityScanner
+    from Core.System.gap_resolver import GapResolver
+    from Data.Access.season_completeness import SeasonCompletenessTracker
+
+    print("  [P2] Running Data Quality Scan & Gap Resolution...")
+    
+    # 1. Immediate fixes
+    resolver_stats = GapResolver.resolve_immediate()
+    
+    # 2. Scan for remaining gaps
+    all_gaps = []
+    for table in ("leagues", "teams", "schedules"):
+        all_gaps.extend(DataQualityScanner.scan_table(table))
+    
+    # 3. Stage for re-enrichment
+    staged_count = GapResolver.stage_enrichment(all_gaps)
+    
+    # 4. Refresh Season Completeness
+    print("  [P2] Computing Season Completeness Metrics...")
+    total_computed = SeasonCompletenessTracker.bulk_compute_all()
+    
+    # 5. Evaluate Gate logic
     conn = conn or init_db()
+    
+    # Critical gap: fs_league_id missing
+    critical_gaps = [g for g in all_gaps if g["column"] == "fs_league_id"]
+    critical_count = len(critical_gaps)
+    
+    # Season coverage threshold: FAIL ONLY if COMPLETED seasons have verified mismatch
+    completeness_stats = conn.execute("""
+        SELECT 
+            COUNT(*) as total_seasons,
+            SUM(CASE WHEN season_status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+            SUM(CASE WHEN season_status = 'COMPLETED' AND total_scanned_matches < total_expected_matches THEN 1 ELSE 0 END) as completed_mismatch_count,
+            SUM(CASE WHEN season_status = 'ACTIVE' THEN 1 ELSE 0 END) as active_count,
+            AVG(CASE WHEN season_status = 'ACTIVE' THEN completeness_pct ELSE NULL END) as active_avg_comp
+        FROM season_completeness
+    """).fetchone()
 
-    # Count distinct seasons per league in fixtures
-    rows = conn.execute("""
-        SELECT league_id, COUNT(DISTINCT season) as season_count
-        FROM schedules
-        WHERE season IS NOT NULL AND season != ''
-        GROUP BY league_id
-    """).fetchall()
-
-    total_leagues = len(rows)
-    leagues_with_enough = sum(1 for r in rows if r[1] >= min_seasons)
-    pct = (leagues_with_enough * 100 // max(total_leagues, 1)) if total_leagues > 0 else 0
-
-    # Ready if >= 80% of leagues with fixtures have enough seasons
-    is_ready = pct >= 80 and total_leagues > 0
+    total_seasons = completeness_stats[0] or 0
+    completed_count = completeness_stats[1] or 0
+    completed_mismatch = completeness_stats[2] or 0
+    active_count = completeness_stats[3] or 0
+    active_avg_comp = completeness_stats[4] or 0
+    
+    # PASS if: 0 critical gaps AND 0 completed mismatches (Active seasons are ongoing)
+    is_ready = critical_count == 0 and completed_mismatch == 0
 
     stats = {
-        "total_leagues_with_fixtures": total_leagues,
-        "leagues_with_enough_seasons": leagues_with_enough,
-        "min_seasons_required": min_seasons,
-        "percentage": pct,
-        "ready": is_ready,
+        "critical_gaps": critical_count,
+        "total_gaps_staged": staged_count,
+        "immediates_fixed": resolver_stats["fixed"],
+        "immediates_derived": resolver_stats["derived"],
+        "total_seasons": total_seasons,
+        "completed_seasons": completed_count,
+        "completed_mismatch": completed_mismatch,
+        "active_seasons": active_count,
+        "active_avg_comp": round(active_avg_comp, 1),
+        "ready": is_ready
     }
 
+    # Print Pretty Output
+    print("  ============================================================")
+    print("    PROLOGUE P2: Data Quality & Season Completeness")
+    print("  ============================================================")
+    print(f"    [Leagues] FIXED {resolver_stats['fixed']} nulls, DERIVED {resolver_stats['derived']} flags")
+    print(f"    [Queue]   {staged_count} items staged for re-enrichment ({critical_count} CRITICAL)")
+    print(f"    [Seasons] {total_seasons} league-seasons computed")
+    print(f"      - COMPLETED: {completed_count} ({completed_mismatch} mismatches)")
+    print(f"      - ACTIVE:    {active_count} (avg {round(active_avg_comp, 1)}% coverage)")
+    
     if is_ready:
-        print(f"  [P2 ✓] Seasons: {leagues_with_enough}/{total_leagues} leagues "
-              f"have {min_seasons}+ seasons ({pct}%)")
+        print(f"    [P2 ✓] READY — {critical_count} critical gaps | {completed_count} seasons COMPLETED | "
+              f"{active_count} seasons ACTIVE (ongoing, not blocking)")
     else:
-        print(f"  [P2 ✗] BELOW THRESHOLD — Only {leagues_with_enough}/{total_leagues} leagues "
-              f"have {min_seasons}+ seasons ({pct}%)")
+        print(f"    [P2 ✗] NOT READY — {critical_count} critical gaps | {completed_mismatch} completed mismatches")
+    print("  ============================================================")
 
+    update_cache('PROLOGUE_P2', is_ready, stats)
     return is_ready, stats
 
-
 def check_rl_ready() -> Tuple[bool, Dict]:
-    """Check if RL model and adapters are trained.
+    """Check if RL model and adapters are trained."""
+    cached = _read_cache('PROLOGUE_P3')
+    if cached:
+        is_ready, stats = cached
+        print(f"  [P3 ✓] (Cached) Readiness: {'READY' if is_ready else 'NOT READY'}")
+        return is_ready, stats
 
-    Returns:
-        (is_ready, stats_dict)
-    """
-    models_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        '..', '..', 'Data', 'Store', 'models'
-    )
+    # FALLBACK: Original FS check
+    models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Data', 'Store', 'models')
     base_model = os.path.join(models_dir, 'leobook_base.pth')
     registry_file = os.path.join(models_dir, 'adapter_registry.json')
 
     has_base = os.path.exists(base_model)
     has_registry = os.path.exists(registry_file)
-
     adapter_count = 0
     if has_registry:
         try:
-            with open(registry_file, 'r') as f:
-                reg = json.load(f)
+            with open(registry_file, 'r') as f: reg = json.load(f)
             adapter_count = len(reg.get('leagues', {}))
-        except Exception:
-            pass
+        except Exception: pass
 
     is_ready = has_base and has_registry and adapter_count > 0
-
-    stats = {
-        "has_base_model": has_base,
-        "has_registry": has_registry,
-        "adapter_count": adapter_count,
-        "ready": is_ready,
-    }
+    stats = {"has_base_model": has_base, "has_registry": has_registry, "adapter_count": adapter_count, "ready": is_ready}
 
     if is_ready:
-        print(f"  [P3 ✓] RL: Base model + {adapter_count} league adapters ready")
+        print(f"  [P3 ✓] RL: Base model + {adapter_count} adapters")
     else:
-        missing = []
-        if not has_base:
-            missing.append("base model")
-        if not has_registry or adapter_count == 0:
-            missing.append("league adapters")
-        print(f"  [P3 ✗] RL NOT READY — Missing: {', '.join(missing)}")
+        print(f"  [P3 ✗] RL NOT READY")
 
+    update_cache('PROLOGUE_P3', is_ready, stats)
     return is_ready, stats
 
 

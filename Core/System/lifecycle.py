@@ -84,6 +84,7 @@ def setup_terminal_logging(args):
         elif args.logos: prefix = "leo_logos_session"
         elif args.enrich_leagues: prefix = "leo_enrich_leagues_session"
         elif args.upgrade_crests: prefix = "leo_upgrade_crests_session"
+        elif args.dry_run: prefix = "leo_dry_run_session"
 
     TERMINAL_LOG_DIR = LOG_DIR / "Terminal"
     TERMINAL_LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -152,6 +153,9 @@ Examples:
   python Leo.py --enrich-leagues --all-seasons Extract all available seasons
   python Leo.py --train-rl               Train RL model from historical fixtures
   python Leo.py --train-rl --league ID   Fine-tune a specific league adapter
+  python Leo.py --train-rl --league ID   Fine-tune a specific league adapter
+  python Leo.py --data-quality           Run diagnostics and immediate gap fixes
+  python Leo.py --season-completeness    Refresh and print match coverage report
         """
     )
     # --- Granular Chapter / Page Selection ---
@@ -197,6 +201,16 @@ Examples:
                        help='Extract all available seasons (use with --enrich-leagues)')
     parser.add_argument('--upgrade-crests', action='store_true',
                         help='Upgrade team crests to high-quality logos from Modules/Assets/logos')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Perform a dry-run of the pipeline without executing actions')
+    parser.add_argument('--bypass-cache', action='store_true',
+                        help='Bypass the readiness cache and force fresh data scans')
+    parser.add_argument('--data-quality', action='store_true',
+                        help='Run DataQualityScanner -> GapResolver IMMEDIATE -> stage STAGE_ENRICHMENT')
+    parser.add_argument('--season-completeness', action='store_true',
+                        help='Refresh and print season completeness metrics')
+    parser.add_argument('--set-expected-matches', type=str, nargs=3, metavar=('LEAGUE_ID', 'SEASON', 'COUNT'),
+                        help='Manual override for expected matches in a season')
 
     # --- RL Training ---
     parser.add_argument('--train-rl', action='store_true',

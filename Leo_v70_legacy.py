@@ -128,23 +128,6 @@ async def run_startup_sync():
 # PROLOGUE — Data Readiness Gates (P1-P3)
 # ============================================================
 
-async def auto_remediate(target: str):
-    """Auto-triggers the correct enrichment or training path to fix readiness gaps."""
-    print(f"\n  [AUTO] Triggering auto-remediation for: {target}")
-    try:
-        if target == "leagues":
-            await run_league_enricher(limit=100)
-        elif target == "seasons":
-            await run_league_enricher(num_seasons=2)
-        elif target == "rl":
-            from Core.Intelligence.rl.trainer import RLTrainer
-            trainer = RLTrainer()
-            trainer.train_from_fixtures()
-        print(f"  [AUTO] Remediation cycle completed.")
-    except Exception as e:
-        print(f"  [AUTO] League enrichment failed: {e}")
-        # Non-blocking; gates will re-check and fail if still not ready
-
 async def run_prologue_p1():
     """Prologue P1: Verify leagues >= 90% of leagues.json AND teams >= 5 per league.
     Auto-remediates via --enrich-leagues + --search-dict if below threshold."""
@@ -625,23 +608,15 @@ async def main():
 
     try:
         # ── STARTUP: DB + Supabase sync (must complete before streamer) ──
-        # Now handled by StartupWorker if we wanted to be fully actor-based,
-        # but the prompt asks to replace the while True loop with Supervisor instantiation.
-        # We'll keep the specialized startup logic here for now but move the cycle into the Supervisor.
-        
-        from Core.System.supervisor import Supervisor
-        from Core.System.pipeline_workers import StartupWorker, PrologueWorker, Chapter1Worker, Chapter2Worker
-        
-        supervisor = Supervisor()
-        
-        # ── Startup Phase ──
-        if not await supervisor.dispatch(StartupWorker):
-            print("   [FATAL] Startup failed. Critical system failure.")
-            sys.exit(1)
+        startup_ok = await run_startup_sync()
+        if not startup_ok:
+            print("   [FATAL] Startup sync failed. Retrying in 60s...")
+            await asyncio.sleep(60)
+            startup_ok = await run_startup_sync()
 
         # ── Initialize scheduler ──
         scheduler = TaskScheduler()
-        scheduler.schedule_weekly_enrichment()
+        scheduler.schedule_weekly_enrichment()  # Ensure next Monday 2:26am is scheduled
         scheduler.cleanup_old()
 
         async with async_playwright() as p:
@@ -660,38 +635,43 @@ async def main():
 
             while True:
                 try:
-                    # Capture cycle metadata
-                    supervisor.state["cycle_count"] += 1
-                    supervisor.state["cycle_start_time"] = dt.now().isoformat()
-                    cycle_num = supervisor.state["cycle_count"]
+                    state["cycle_count"] += 1
+                    state["cycle_start_time"] = dt.now()
+                    cycle_num = state["cycle_count"]
                     log_state(chapter="Cycle Start", action=f"Starting Cycle #{cycle_num}")
                     log_audit_event("CYCLE_START", f"Cycle #{cycle_num} initiated.")
-                    
-                    # ── Task Execution Phase ──
+
+                    # ── SCHEDULED TASKS (weekly enrichment, day-before predictions) ──
                     await execute_scheduled_tasks(scheduler, p)
 
-                    # ── Pipeline Phases via Supervisor ──
-                    
-                    # Gate 1: Prologue
-                    if await supervisor.dispatch(PrologueWorker):
-                        
-                        # Gate 2: Chapter 1 (Predictions)
-                        ch1_worker = Chapter1Worker(p)
-                        fb_healthy = await supervisor.dispatch(ch1_worker.__class__, scheduler=scheduler, playwright_instance=p)
-                        
-                        # Gate 3: Chapter 2 (Betting)
-                        if fb_healthy:
-                            await supervisor.dispatch(Chapter2Worker, playwright_instance=p)
-                        else:
-                            print("\n" + "=" * 60)
-                            print("  CHAPTER 2: SKIPPED — Football.com session unhealthy")
-                            print("=" * 60)
-                            log_audit_event("CH2_SKIPPED", "Skipped: Football.com session failed.", status="skipped")
+                    # ── PROLOGUE: Data Readiness Gates ──
+                    print("\n" + "=" * 60)
+                    print("  📋 PROLOGUE: Data Readiness Gates")
+                    print("=" * 60)
+                    await run_prologue_p1()   # Leagues >= 90% + Teams >= 5/league
+                    await run_prologue_p2()   # 2+ seasons of fixtures
+                    await run_prologue_p3()   # RL adapters trained
+
+                    # ── CHAPTER 1: Prediction Pipeline ──
+                    print("\n" + "=" * 60)
+                    print("  ⚡ CHAPTER 1: Prediction Pipeline")
+                    print("=" * 60)
+                    fb_healthy = await run_chapter_1_p1(p)    # URL Resolution + Odds
+                    await run_chapter_1_p2(p, scheduler=scheduler)  # Predictions
+                    await run_chapter_1_p3()                   # Recommendations + Final Sync
+
+                    # ── CHAPTER 2: Betting Automation ──
+                    if fb_healthy:
+                        await run_chapter_2_p1(p)
+                        await run_chapter_2_p2(p)
                     else:
-                        print("  [Error] Prologue Gate failed. Cycle aborted.")
+                        print("\n" + "=" * 60)
+                        print("  CHAPTER 2: SKIPPED — Football.com session unhealthy")
+                        print("=" * 60)
+                        log_audit_event("CH2_SKIPPED", "Skipped: Football.com session failed.", status="skipped")
 
                     # ── SCHEDULE NEXT TASKS ──
-                    scheduler.schedule_weekly_enrichment()
+                    scheduler.schedule_weekly_enrichment()  # Ensure next week is scheduled
 
                     # ── CYCLE COMPLETE — Dynamic sleep ──
                     log_audit_event("CYCLE_COMPLETE", f"Cycle #{cycle_num} finished.")
@@ -701,6 +681,7 @@ async def main():
                         from Core.Utils.constants import now_ng
                         sleep_secs = max(60, (next_wake - now_ng()).total_seconds())
                         sleep_hrs = sleep_secs / 3600
+                        # Cap at default cycle hours if next task is too far away
                         if sleep_hrs > DEFAULT_CYCLE_HOURS:
                             sleep_secs = DEFAULT_CYCLE_HOURS * 3600
                             sleep_hrs = DEFAULT_CYCLE_HOURS
@@ -714,7 +695,7 @@ async def main():
                     await asyncio.sleep(sleep_secs)
 
                 except Exception as e:
-                    supervisor.state["error_log"].append(f"{dt.now()}: {e}")
+                    state["error_log"].append(f"{dt.now()}: {e}")
                     print(f"[ERROR] Main loop: {e}")
                     log_audit_event("CYCLE_ERROR", f"Unhandled: {e}", status="failed")
                     await asyncio.sleep(60)
@@ -744,81 +725,6 @@ if __name__ == "__main__":
     is_granular = args.prologue or args.chapter is not None
 
     try:
-        if args.dry_run:
-            print("\n" + "=" * 60)
-            print("  DRY-RUN MODE ACTIVE: Actions will be logged but not executed.")
-            print("=" * 60)
-
-        # ── STARTUP: DB + Supabase sync (must complete before streamer) ──
-        if args.data_quality:
-            from Core.System.data_quality import DataQualityScanner
-            from Core.System.gap_resolver import GapResolver
-            print("\n[Data Quality] Running Diagnostics...")
-            report_path = DataQualityScanner.produce_gap_report()
-            print(f"  [Scanner] Report generated: {report_path}")
-            
-            print("\n[Data Quality] Resolving Immediate Gaps...")
-            stats = GapResolver.resolve_immediate()
-            
-            print("\n[Data Quality] Staging Enrichment Gaps...")
-            all_gaps = []
-            for table in ("leagues", "teams", "schedules"):
-                all_gaps.extend(DataQualityScanner.scan_table(table))
-            staged = GapResolver.stage_enrichment(all_gaps)
-            
-            print("\n[Data Quality] Refreshing Season Completeness...")
-            from Data.Access.season_completeness import SeasonCompletenessTracker
-            SeasonCompletenessTracker.bulk_compute_all()
-            
-            print("\n[Data Quality] Validating IDs (Placeholders/Duplicates)...")
-            from Core.System.data_quality import InvalidIDScanner
-            from Core.System.gap_resolver import InvalidIDResolver
-            for table, id_col in [("leagues", "fs_league_id"), ("teams", "team_id")]:
-                invalids = InvalidIDScanner.scan_invalid_ids(table, id_col)
-                if invalids:
-                    print(f"  [{table}] Detected {len(invalids)} invalid IDs.")
-                    fixed = InvalidIDResolver.attempt_local_resolution(table, invalids)
-                    staged = InvalidIDResolver.stage_invalid_ids(table, invalids)
-                    print(f"    - Resolved locally: {fixed}")
-                    print(f"    - Staged CRITICAL:  {staged}")
-            
-            sys.exit(0)
-
-        if args.season_completeness:
-            from Data.Access.season_completeness import SeasonCompletenessTracker
-            from Data.Access.league_db import get_connection
-            print("\n[Season Completeness] Refreshing metrics...")
-            SeasonCompletenessTracker.bulk_compute_all()
-            
-            conn = get_connection()
-            rows = conn.execute("""
-                SELECT league_id, season, total_expected_matches, total_scanned_matches, 
-                       completeness_pct, season_status 
-                FROM season_completeness 
-                ORDER BY completeness_pct ASC
-            """).fetchall()
-            
-            print("\n" + "=" * 80)
-            print(f"{'LEAGUE_ID':<15} | {'SEASON':<8} | {'EXP':<4} | {'SCAN':<4} | {'%':<6} | {'STATUS'}")
-            print("-" * 80)
-            for r in rows:
-                print(f"{r[0]:<15} | {r[1]:<8} | {r[2]:<4} | {r[3]:<4} | {r[4]:>5.1f}% | {r[5]}")
-            print("=" * 80)
-            sys.exit(0)
-
-        if args.set_expected_matches:
-            from Data.Access.league_db import get_connection
-            league_id, season, count = args.set_expected_matches
-            conn = get_connection()
-            conn.execute("""
-                INSERT INTO season_completeness (league_id, season, total_expected_matches)
-                VALUES (?, ?, ?)
-                ON CONFLICT(league_id, season) DO UPDATE SET total_expected_matches = excluded.total_expected_matches
-            """, (league_id, season, int(count)))
-            conn.commit()
-            print(f"  [Completeness] Set expected matches for {league_id} {season} to {count}")
-            sys.exit(0)
-
         if is_utility:
             asyncio.run(run_utility(args))
         elif is_granular:
@@ -829,5 +735,4 @@ if __name__ == "__main__":
         print("\n   --- LEO: Shutting down. ---")
     finally:
         sys.stdout, sys.stderr = original_stdout, original_stderr
-        log_file.close()
         log_file.close()

@@ -1,52 +1,47 @@
 # LeoBook Algorithm & Codebase Reference
-
-> **Version**: 7.2 · **Last Updated**: 2026-03-06 · **Architecture**: Autonomous High-Velocity Architecture (Task Scheduler + Data Readiness Gates + Neural RL)
+ 
+> **Version**: 7.3 · **Last Updated**: 2026-03-07 · **Architecture**: Autonomous High-Velocity Architecture (Supervisor-Worker + Neuro-Symbolic Ensemble + Data Quality v7.1)
 
 This document maps the **execution flow** of [Leo.py](Leo.py) to specific files and functions.
 
 ---
 
-## Autonomous Orchestration (v7.0)
+## Autonomous Orchestration (v7.1)
 
-Leo.py is an **autonomous orchestrator** powered by a **dynamic Task Scheduler** (`Core/System/scheduler.py`). It no longer relies on a static 6h loop; instead, it wakes up at target task times or operates at default intervals.
+Leo.py is an **autonomous orchestrator** powered by a **Supervisor-Worker Pattern** (`Core/System/supervisor.py`). It replaces the monolithic loop with isolated, stateful workers.
 
 ```
-Leo.py (Orchestrator) v7.2
+Leo.py (Orchestrator) v7.3
+├── Supervisor (System Control):
+│   └── System State Persistence (SQLite system_state table)
 ├── Startup (Bootstrap):
 │   └── Push-Only Sync → Supabase (auto-bootstrap if local DB empty)
-├── Task Scheduler:
-│   └── Pending Task Execution (Weekly Enrichment, Day-before Predictions)
-├── Prologue (Data Readiness Gates):
-│   ├── P1: Threshold Check (Leagues/Teams)
-│   ├── P2: History Check (2+ Seasons)
-│   └── P3: AI Readiness (RL Adapters)
-├── Chapter 1 (Prediction Pipeline):
-│   ├── P1: Odds Harvesting & URL Resolution
-│   ├── P2: Prediction (Pure DB — Rule Engine + RL Ensemble, no browser)
-│   │   └── Data Leak Guard (Max 1/team/week — prevents stale-data predictions)
-│   └── P3: Recommendations & Final Chapter Sync
-├── Chapter 2 (Betting Automation):
-│   ├── P1: Automated Booking (Football.com)
-│   └── P2: Funds & Withdrawal Check
-└── Live Streamer: Isolated parallel task (60s updates + outcome review + accuracy reports)
+├── Chapter Workers (Isolated Execution):
+│   ├── P1 Worker: Prologue P1
+│   ├── P2 Worker: Prologue P2
+│   ├── C1 Worker: Chapter 1 (Resolution, Ensemble Predict, Sync)
+│   └── C2 Worker: Chapter 2 (Booking, Funds)
+├── Prologue (Materialized Readiness Cache):
+│   ├── P1: Quantity & ID Gate (O(1) lookup)
+│   ├── P2: History & Quality Gate (O(1) lookup)
+│   └── P3: AI Readiness (O(1) lookup)
+└── Live Streamer: Isolated parallel task (60s updates + outcome review)
 ```
 
 ---
 
 ## Data Readiness Gates & Auto-Remediation
 
-**Objective**: Ensure 100% data integrity before prediction resources are expended.
+**Readiness Cache**: Gates perform O(1) reads from `readiness_cache`. The O(N) scan logic is reserved for `--bypass-cache` or post-remediation updates.
 
-Leo.py implements three sequential high-level gates handled by `DataReadinessChecker` ([data_readiness.py](Core/System/data_readiness.py)):
-
-1. **Gate P1 (Quantity)**: Checks if the local database has sufficient coverage. 
-   - **Thresholds**: 90% of `leagues.json` entries must exist in the DB, and each league must have at least 5 teams. 
-   - **Remediation**: Triggers `enrich_leagues.py` (Full Mode) with 30-minute timeout.
-2. **Gate P2 (History)**: Checks for historical fixture coverage.
-   - **Threshold**: ≥ 80% of leagues with fixtures have 2+ distinct seasons.
-   - **Remediation**: Triggers `enrich_leagues.py --seasons 2` with 30-minute timeout. If enrichment exceeds the budget, proceeds with available data.
-3. **Gate P3 (AI)**: Checks if the Reinforcement Learning adapters are trained for the active schedule.
-   - **Remediation**: Triggers `trainer.py` via `python Leo.py --train-rl`.
+1. **Gate P1 (Quantity & ID)**: Checks coverage and data quality.
+   - **Thresholds**: 90% league coverage AND teams >= 3 per league. Validates IDs (fail if >5% invalid).
+   - **Remediation**: Triggers `auto_remediate("leagues")`.
+2. **Gate P2 (History & Quality)**: Checks fixture coverage.
+   - **Logic**: Pass if 0 critical gaps AND 0 completed season mismatches. **ACTIVE seasons never block.**
+   - **Remediation**: Triggers `auto_remediate("seasons")`.
+3. **Gate P3 (AI)**: RL adapters trained.
+   - **Remediation**: Triggers `auto_remediate("rl")`.
 
 ---
 
@@ -93,9 +88,31 @@ The standalone `standings` table has been deprecated and removed.
 - **Cold-Start**: New leagues/teams get a generic adapter; the model defaults to conservative predictions.
 - **Fine-Tune Threshold**: After 50+ matches, an adapter becomes eligible for fine-tuning.
 - **Training**: Chronological day-by-day walk-through using only historical data (future dates excluded). PPO with composite rewards and clipped gradients.
+
+---
+
+## Neuro-Symbolic Ensemble
+
+**Objective**: Combine rule-based transparency with neural-based pattern recognition.
+
+Handled by `EnsembleEngine` ([ensemble.py](Core/Intelligence/ensemble.py)), predictions are merged using a weighted confidence-logits formula:
+
+### 1. The Merger Formula
+$$Final\_Logits = (W_s \times Rule\_Conf \times Rule\_Logits) + (W_n \times RL\_Conf \times RL\_Logits)$$
+Where:
+- $W_s, W_n$: Weights for Symbolic and Neural engines respectively.
+- $Rule\_Conf, RL\_Conf$: Confidence scores (0.0 - 1.0) from each engine.
+
+### 2. Default Configuration
+- **Weights**: Default $W_s = 0.7$, $W_n = 0.3$.
+- **Overrides**: Weights can be tuned per-league via `ensemble_weights.json`.
+
+### 3. Symbolic Baseline Guarantee
+- **Symbolic Fallback**: If $RL\_Conf < 0.3$ or neural inference fails, the system triggers `fallback_to_symbolic`, returning **100% Rule Engine output**.
+- **Reasoning**: Neural models can "hallucinate" high confidence on OOD (Out-Of-Distribution) data. The Rule Engine provides a physical/logical baseline that neural signals must augment, not replace, when uncertain.
 - **Circuit Breaker**: SearchDict LLM enrichment skips remaining batches if all providers (Gemini + Grok) are offline.
 
 ---
 
-*Last updated: March 6, 2026 (v7.2 — Data Leak Guard + 30-min Remediation Timeout + LoRA Lifecycle + Safety Guardrails)*
+*Last updated: March 7, 2026 (v7.3 — Supervisor-Worker + Neuro-Symbolic Ensemble + Data Quality v7.1)*
 *LeoBook Engineering Team — Materialless LLC*

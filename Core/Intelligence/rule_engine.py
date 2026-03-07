@@ -264,4 +264,9 @@ class RuleEngine:
             "home_form_n": len(home_form),
             "away_form_n": len(away_form),
             "total_xg": round(home_xg + away_xg, 2),
+            "raw_scores": {
+                "home": home_score,
+                "draw": draw_score,
+                "away": away_score
+            }
         }

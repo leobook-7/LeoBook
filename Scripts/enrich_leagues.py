@@ -1037,6 +1037,10 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
     # ── Initialize DB ────────────────────────────────────────────────────
     conn = init_db()
     print(f"  [DB] Initialized at {os.path.abspath(conn.execute('PRAGMA database_list').fetchone()[2])}")
+    
+    # ── Drain Enrichment Queue (Invalid IDs / High Priority) ─────────────
+    # This must run before the main loop to ensure IDs are resolved for the subsequent scan
+    await drain_enrichment_queue(conn)
 
     if reset:
         conn.execute("UPDATE leagues SET processed = 0")
@@ -1207,21 +1211,146 @@ async def main(limit: Optional[int] = None, offset: int = 0, reset: bool = False
                 OR current_season IS NULL OR current_season = '')"""
     ).fetchone()[0]
 
+    # 1. Resolve Immediate Gaps (Country Codes, Flags)
+    try:
+        from Core.System.gap_resolver import GapResolver
+        print("  [GapResolver] Resolving immediate gaps...")
+        GapResolver.resolve_immediate()
+    except Exception as e:
+        print(f"  [GapResolver] Failed: {e}")
+
+    # 2. Update Season Completeness
+    try:
+        from Data.Access.season_completeness import SeasonCompletenessTracker
+        print("  [Completeness] Refreshing season metrics...")
+        SeasonCompletenessTracker.bulk_compute_all()
+    except Exception as e:
+        print(f"  [Completeness] Failed: {e}")
+
+    # 3. Update Status Counts
+    fixture_count = conn.execute("SELECT COUNT(*) FROM schedules").fetchone()[0]
+    team_count = conn.execute("SELECT COUNT(*) FROM teams").fetchone()[0]
+    processed = conn.execute("SELECT COUNT(*) FROM leagues WHERE processed = 1").fetchone()[0]
+    
     # Auto-propagate Supabase crest URLs from teams into schedules
     from Data.Access.db_helpers import propagate_crest_urls
-    propagate_crest_urls()
+    try:
+        propagate_crest_urls()
+    except Exception:
+        pass
 
     print(f"\n{'='*60}")
     print(f"  SCRAPING COMPLETE")
     print(f"{'='*60}")
-    print(f"  Leagues:  {league_count} total, {processed} processed, {gaps} with gaps")
+    print(f"  Leagues:  {league_count} total, {processed} processed")
     print(f"  Fixtures: {fixture_count}")
     print(f"  Teams:    {team_count}")
-    print(f"  DB:       {os.path.abspath(conn.execute('PRAGMA database_list').fetchone()[2])}")
     print(f"{'='*60}\n")
+
+    # 4. Update readiness cache (Section 2 - Scalability)
+    try:
+        from Core.System.data_readiness import check_leagues_ready, check_seasons_ready
+        print("  [Cache] Updating readiness cache after enrichment...")
+        check_leagues_ready(conn=conn)
+        check_seasons_ready(conn=conn)
+    except Exception as e:
+        print(f"  [Cache] Failed to update readiness cache: {e}")
 
     conn.close()
     executor.shutdown(wait=False)
+
+
+async def drain_enrichment_queue(conn):
+    """Processes pending items in enrichment_queue, specifically for invalid IDs."""
+    from Core.System.gap_resolver import GapResolver
+    GapResolver._ensure_queue_table()
+    
+    # Priority 1: Invalid IDs that block everything
+    pending = conn.execute("""
+        SELECT * FROM enrichment_queue 
+        WHERE status = 'PENDING' AND priority = 1
+        LIMIT 50
+    """).fetchall()
+    
+    if not pending:
+        return
+
+    print(f"\n  [Queue] Draining {len(pending)} CRITICAL items from enrichment_queue...")
+    from playwright.async_api import async_playwright
+    
+    async with async_playwright() as p:
+        # Using a slightly larger window and normal profile to avoid bot detection during search
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        
+        for item in pending:
+            item_id = item["id"]
+            table = item["table_name"]
+            row_id = item["row_id"]
+            col = item["column_name"]
+            lookup_key = json.loads(item["lookup_key"])
+            
+            print(f"    - Resolving {table} ID for: {lookup_key.get('league_name') or lookup_key.get('team_name') or 'Unknown'}")
+            
+            new_id = await resolve_id_via_search(context, table, lookup_key)
+            
+            if new_id:
+                # Update the target table
+                conn.execute(f"UPDATE {table} SET {col} = ? WHERE id = ?", (new_id, row_id))
+                # Mark as resolved
+                conn.execute("UPDATE enrichment_queue SET status = 'RESOLVED', resolved_at = ? WHERE id = ?", 
+                             (datetime.now().isoformat(), item_id))
+                print(f"      [✓] RESOLVED: {new_id}")
+            else:
+                attempts = (item["attempts"] or 0) + 1
+                status = 'FAILED' if attempts >= 3 else 'PENDING'
+                conn.execute("UPDATE enrichment_queue SET attempts = ?, status = ? WHERE id = ?", 
+                             (attempts, status, item_id))
+                print(f"      [✗] FAILED to resolve (Attempt {attempts}/3)")
+            
+            conn.commit()
+            
+        await browser.close()
+
+
+async def resolve_id_via_search(context, table, lookup_key):
+    """Uses Playwright to search Flashscore for a league/team and extract its ID."""
+    page = await context.new_page()
+    try:
+        if table == "leagues":
+            name = lookup_key.get("league_name")
+            country = lookup_key.get("country_name") or lookup_key.get("country_code")
+            search_query = f"{country} {name}"
+        else: # teams
+            name = lookup_key.get("team_name")
+            country = lookup_key.get("country_code")
+            search_query = f"{name} {country}"
+            
+        # 1. Search Flashscore
+        await page.goto(f"https://www.flashscore.com/search/?q={search_query.replace(' ', '+')}", timeout=60000)
+        
+        try:
+            await page.wait_for_selector(".search__content", timeout=15000)
+        except:
+            return None
+        
+        # 2. Extract ID
+        selector = ".search__section--leagues a" if table == "leagues" else ".search__section--participant a"
+        first_match = await page.query_selector(selector)
+        
+        if first_match:
+            href = await first_match.get_attribute("href")
+            if href:
+                parts = [p for p in href.split("/") if p]
+                if parts:
+                    return parts[-1] 
+                    
+        return None
+    except Exception as e:
+        print(f"      [Search Error] {e}")
+        return None
+    finally:
+        await page.close()
 
 
 if __name__ == "__main__":

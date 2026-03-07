@@ -18,6 +18,8 @@ from typing import List, Dict, Any, Optional
 from Data.Access.league_db import init_db, computed_standings
 from Data.Access.db_helpers import save_prediction
 from Core.Intelligence.rule_engine import RuleEngine
+from Core.Intelligence.rl.inference import RLPredictor
+from Core.Intelligence.ensemble import EnsembleEngine
 from Core.Utils.constants import now_ng
 
 logger = logging.getLogger(__name__)
@@ -251,8 +253,40 @@ async def run_predictions(conn=None, fixtures: List[Dict] = None, scheduler=None
                 skipped += 1
                 continue
 
-            # Run prediction
-            prediction = RuleEngine.analyze(vision_data)
+            # Run symbolic prediction
+            rule_prediction = RuleEngine.analyze(vision_data)
+
+            # Run neural prediction
+            rl_predictor = RLPredictor.get_instance()
+            rl_prediction = rl_predictor.predict(
+                vision_data,
+                fs_league_id=fixture.get("league_id", "GLOBAL"),
+                home_team_id=fixture.get("home_team_id", ""),
+                away_team_id=fixture.get("away_team_id", "")
+            )
+
+            # Ensemble Merge
+            merged = EnsembleEngine.merge(
+                rule_logits=rule_prediction.get("raw_scores", {"home": 1.0, "draw": 1.0, "away": 1.0}),
+                rule_conf=rule_prediction.get("market_reliability", 50) / 100.0,
+                rl_logits=rl_prediction.get("rl_action_probs"),
+                rl_conf=rl_prediction.get("ml_confidence"),
+                league_id=fixture.get("league_id", "GLOBAL")
+            )
+
+            # Integrate merged data into final prediction
+            # We keep Rule Engine's structural fields but update confidence and add ensemble metadata
+            prediction = rule_prediction.copy()
+            prediction["ensemble_path"] = merged["path"]
+            prediction["ensemble_weights"] = merged["weights"]
+            prediction["market_reliability"] = round(merged["confidence"] * 100, 1)
+
+            # Update confidence label based on merged confidence
+            conf = merged["confidence"]
+            if conf > 0.75: prediction["confidence"] = "Very High"
+            elif conf > 0.60: prediction["confidence"] = "High"
+            elif conf > 0.45: prediction["confidence"] = "Medium"
+            else: prediction["confidence"] = "Low"
 
             p_type = prediction.get("type", "SKIP")
             if p_type == "SKIP":

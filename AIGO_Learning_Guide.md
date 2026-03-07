@@ -1,6 +1,6 @@
-# AIGO: AI-Guided Operation — Self-Healing Framework (v5.4)
+# AIGO: AI-Guided Operation — Self-Healing Framework (v6.0)
 
-> **Version**: 5.4 · **Last Updated**: 2026-03-01 · **LLM Backend**: Multi-Key Gemini Rotation (DESCENDING chain) · xAI Grok API (Optional)
+> **Version**: 6.0 · **Last Updated**: 2026-03-07 · **Architecture**: Unified Browser-Data Self-Healing (AIGO v2)
 
 AIGO is the **self-healing immune system** of LeoBook. It ensures the automation pipeline never stops — even when target websites (Flashscore, Football.com) change their UI, add popups, rename CSS classes, or deploy entirely new page layouts.
 
@@ -61,15 +61,15 @@ Once a path succeeds, AIGO **permanently heals** the codebase:
 
 ## 3. Component Architecture
 
-| Component | File | Role | Invocation Rate |
-|-----------|------|------|:-:|
-| **AIGO Engine** | `aigo_engine.py` | Decision maker — coordinates Grok API calls and path validation | ~8-18% of interactions |
-| **Interaction Engine** | `interaction_engine.py` | Executor — handles the 5-phase cascade, retries, and path switching | 100% of browser actions |
-| **Visual Analyzer** | `visual_analyzer.py` | Vision — combines screenshots + DOM for element discovery | ~20-30% of interactions |
-| **Memory Manager** | `memory_manager.py` | Experience — stores success/failure patterns for reinforcement learning | 100% of interactions |
-| **Selector DB** | `selector_db.py` | Registry — UPSERT operations on `knowledge.json` selectors, handles failure logging (`log_selector_failure`) | On every AI path / failure |
-| **Unified Matcher** | `unified_matcher.py` | Multi-strategy matcher — CSS → XPath → text → fuzzy | ~40-60% of interactions |
-| **Popup Handler** | `popup_handler.py` | Overlay removal — intelligent popup/modal/overlay dismissal | Pre-emptive on every page |
+| Component              | File                    | Role                                                                                                         |      Invocation Rate       |
+| ---------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ | :------------------------: |
+| **AIGO Engine**        | `aigo_engine.py`        | Decision maker — coordinates Grok API calls and path validation                                              |   ~8-18% of interactions   |
+| **Interaction Engine** | `interaction_engine.py` | Executor — handles the 5-phase cascade, retries, and path switching                                          |  100% of browser actions   |
+| **Visual Analyzer**    | `visual_analyzer.py`    | Vision — combines screenshots + DOM for element discovery                                                    |  ~20-30% of interactions   |
+| **Memory Manager**     | `memory_manager.py`     | Experience — stores success/failure patterns for reinforcement learning                                      |    100% of interactions    |
+| **Selector DB**        | `selector_db.py`        | Registry — UPSERT operations on `knowledge.json` selectors, handles failure logging (`log_selector_failure`) | On every AI path / failure |
+| **Unified Matcher**    | `unified_matcher.py`    | Multi-strategy matcher — CSS → XPath → text → fuzzy                                                          |  ~40-60% of interactions   |
+| **Popup Handler**      | `popup_handler.py`      | Overlay removal — intelligent popup/modal/overlay dismissal                                                  | Pre-emptive on every page  |
 
 ---
 
@@ -77,14 +77,14 @@ Once a path succeeds, AIGO **permanently heals** the codebase:
 
 AIGO is **not called directly** by Leo.py. Instead, it's woven into every browser interaction through the modules that Leo.py calls:
 
-| Chapter | Module | AIGO Usage |
-|---------|--------|------------|
-| **Prologue P1** | `outcome_reviewer.py` | Score extraction + **Adaptive Weight Feedback Loop** |
-| **Prologue P2** | `lifecycle.py` | Final sync and accuracy reporting |
-| **Ch1 (Per-Match)** | `fs_processor.py` | H2H tab navigation, data extraction |
-| **Ch1 P2** | `navigator.py`, `booking_code.py` | Football.com navigation, odds selection |
-| **Ch2 P1** | `slip.py`, `placement.py` | Bet slip interactions, code injection |
-| **Ch2 P2** | `withdrawal.py` | Balance reading, withdrawal execution |
+| Chapter             | Module                            | AIGO Usage                                           |
+| ------------------- | --------------------------------- | ---------------------------------------------------- |
+| **Prologue P1**     | `outcome_reviewer.py`             | Score extraction + **Adaptive Weight Feedback Loop** |
+| **Prologue P2**     | `lifecycle.py`                    | Final sync and accuracy reporting                    |
+| **Ch1 (Per-Match)** | `fs_processor.py`                 | H2H tab navigation, data extraction                  |
+| **Ch1 P2**          | `navigator.py`, `booking_code.py` | Football.com navigation, odds selection              |
+| **Ch2 P1**          | `slip.py`, `placement.py`         | Bet slip interactions, code injection                |
+| **Ch2 P2**          | `withdrawal.py`                   | Balance reading, withdrawal execution                |
 
 ---
 
@@ -100,10 +100,10 @@ AIGO is **not called directly** by Leo.py. Instead, it's woven into every browse
 
 ## 6. Environment Requirements
 
-| Variable | Required | Purpose |
-|----------|:--------:|---------|
-| `GEMINI_API_KEY` | ✅ | Google Gemini API (comma-separated, 25+ keys) — primary LLM for Phase 3 expert consultation |
-| `GROK_API_KEY` | Optional | xAI Grok API — secondary fallback for expert consultation |
+| Variable         | Required | Purpose                                                                                     |
+| ---------------- | :------: | ------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY` |    ✅     | Google Gemini API (comma-separated, 25+ keys) — primary LLM for Phase 3 expert consultation |
+| `GROK_API_KEY`   | Optional | xAI Grok API — secondary fallback for expert consultation                                   |
 
 ---
 
@@ -111,4 +111,27 @@ AIGO is **not called directly** by Leo.py. Instead, it's woven into every browse
 
 **AIGO is the difference between a bot that crashes and a bot that adapts.** It transforms web scraping into "observing and acting," giving LeoBook the ability to learn and heal in real-time. Every successful AI discovery permanently improves the system's knowledge base — making it faster and more resilient with every cycle.
 
-> **Production Reality**: In steady-state operation, AIGO Phase 3 (Grok API) is invoked on only ~8-18% of browser interactions. The other 82-92% are resolved instantly via cached selectors and reinforcement learning (Phases 0-1).
+---
+
+## 7. Data Self-Healing (The Immune System)
+
+In v7.1, AIGO's self-healing capabilities expanded from browser interactions to **Data Integrity**. If the database is missing critical info or contains "toxic" (invalid) data, AIGO's data-layer immune system triggers:
+
+### 7.1 Data Quality Scanner
+- **Module**: [data_quality.py](Core/System/data_quality.py)
+- **AIGO Logic**: Performs deep scans of every table. If a missing column can be derived (e.g., country name → country code), it is fixed **IMMEDIATE**. If not, it is classified as `STAGE_ENRICHMENT`.
+
+### 7.2 Invalid ID Resolution Pipeline
+- **Problem**: Flashscore IDs often contain placeholders (`UNKNOWN_*`) or are malformed.
+- **Healing**: 
+  1. **Local Resolver**: Checks `leagues.json` and internal mappings.
+  2. **Merge Strategy**: Detects duplicate teams/leagues where one has a placeholder ID and another has a valid one — merges them and re-links all schedule dependencies.
+  3. **Search Handler**: If local resolution fails, the ID is pushed to the `enrichment_queue` for **automated Flashscore searching**.
+
+### 7.3 `enrichment_queue` Drain Cycle
+- **Orchestrator**: [Leo.py](Leo.py) triggers `auto_remediate`.
+- **Worker**: [enrich_leagues.py](Scripts/enrich_leagues.py) pulls `Priority 1 (CRITICAL)` items.
+- **AIGO Action**: Spawns a Playwright page, searches Flashscore for the specific team/league name, extracts the correct URL-based ID, and updates the database — closing the loop without human intervention.
+
+### 7.4 Live Score & Completeness
+- **Feedback**: The `LiveStreamer` monitors match counts. If a season is flagged as `COMPLETED` but match counts are missing, it triggers the scanner to re-compute completeness, ensuring the Flutter app progress bars always reflect reality.

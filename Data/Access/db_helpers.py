@@ -41,7 +41,22 @@ def _get_conn():
 def init_csvs():
     """Initialize the database. Legacy name preserved for compatibility."""
     print("     Initializing databases...")
-    _get_conn()
+    conn = _get_conn()
+    init_readiness_cache_table(conn)
+
+def init_readiness_cache_table(conn=None):
+    """Initialize the readiness_cache table (Section 2 - Scalability)."""
+    conn = conn or _get_conn()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS readiness_cache (
+            gate_id TEXT PRIMARY KEY,
+            is_ready INTEGER,
+            details TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    print("     [Cache] Readiness cache table initialized.")
 
 
 # ─── Audit Log ───

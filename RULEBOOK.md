@@ -1,4 +1,4 @@
-# LeoBook Developer RuleBook v7.2
+# LeoBook Developer RuleBook v7.3
 
 > **This document is LAW.** Every developer and AI agent working on LeoBook MUST follow these rules without exception. Violations will break the system.
 
@@ -22,9 +22,10 @@ Before writing ANY code, ask in this exact order:
 ### 2.1 Leo.py Is an Autonomous Orchestrator
 
 - **`Leo.py` is an AUTONOMOUS ORCHESTRATOR** — it contains ZERO business logic.
-- It is powered by a **Dynamic Task Scheduler** (`Core/System/scheduler.py`).
+- It is powered by a **Supervisor-Worker Pattern** (`Core/System/supervisor.py`).
+- Isolated chapter workers (`Core/System/pipeline_workers.py`) handle execution, failure recovery, and state persistence.
 - Every script MUST be callable via `Leo.py` CLI flags.
-- **Cycle Control**: Leo.py decides when to wake up based on `scheduler.next_wake_time()`. Static loops are forbidden.
+- **Cycle Control**: The `Supervisor` decides when to wake up based on `scheduler`. Monolithic `while True` loops are forbidden.
 
 ### 2.2 Startup Bootstrapping (MANDATORY)
 
@@ -42,9 +43,14 @@ Operations MUST NOT start (including live streamer) until startup sync completes
 
 Leo.py operates via three sequential gates to ensure data integrity:
 
-1. **Prologue P1 (Quantity Gate)**: Leagues >= 90% coverage AND Teams >= 5 per league.
-2. **Prologue P2 (History Gate)**: Minimum 2+ distinct seasons of fixture data per league (seasons, not calendar years — includes current season).
+1. **Prologue P1 (Quantity & ID Gate)**: Leagues >= 90% coverage AND Teams >= 3 per league (v7.1). Validates Flashscore IDs — fails if invalid ID rate > 5%.
+2. **Prologue P2 (History & Quality Gate)**: Minimum 2+ distinct seasons of fixture data per league.
+    - **Logic**: Gate passes if 0 critical gaps AND 0 completed season mismatches. **ACTIVE seasons never block the gate.**
 3. **Prologue P3 (AI Gate)**: RL Adapters must be trained and ready.
+
+**Readiness Cache (Materialized)**:
+- Gate checks MUST read from `readiness_cache` in the DB for O(1) lookup.
+- The cache is updated after every successful scan or via `--bypass-cache` for forced re-scan.
 
 **Auto-Remediation**: If a gate fails, Leo.py triggers the relevant enrichment or training script automatically (`auto_remediate`) with a **30-minute timeout**. If remediation exceeds the budget, the system logs a warning and proceeds with available data. The pipeline is never blocked indefinitely by auto-remediation.
 
@@ -127,6 +133,29 @@ Every Python file MUST have this header format:
     - In JS evaluation, pass the selectors dict as an argument and reference keys (e.g., `s.breadcrumb_links`, `s.match_link`).
 - **Reasoning**: Flashscore frequently changes class names and DOM structure. Centralizing selectors in one JSON file makes updates fast and auditable.
 
+### 2.12 Data Quality & Invalid ID Resolution
+
+- **Scanner**: Every core table undergoes column-by-column NULL/empty/malformed scanning.
+- **Gap Classification**:
+    - `IMMEDIATE`: Fixable via internal lookup (e.g., ISO codes).
+    - `DERIVABLE`: Fixable via cross-table logic (e.g., region flags).
+    - `STAGE_ENRICHMENT`: Requires external scraping.
+    - `DEFERRED`: Low priority/non-critical.
+- **Invalid ID Detection**:
+    - Patterns: `^[A-Z_]+$`, `UNKNOWN_*`, empty, or < 8 chars for teams.
+    - Duplicates: Valid IDs overwrite placeholders; multiple valid rows are merged (dependency re-linking).
+- **enrichment_queue**:
+    - `Priority 1 (CRITICAL)`: Invalid IDs blocking remediation.
+    - `Priority 5 (NORMAL)`: Missing metadata.
+    - `Priority 10 (DEFERRED)`: Old season gaps.
+
+### 2.13 Neuro-Symbolic Ensemble (Intelligence)
+
+- **Rule**: Predictions MUST combine Rule Engine (Symbolic) and RL (Neural) signals.
+- **Formula**: `Final_Logits = (W_symbolic * Rule_Score) + (W_neural * RL_Score)`.
+- **Weights**: Default `W_symbolic=0.7`, `W_neural=0.3`. Overridable per-league in `ensemble_weights.json`.
+- **Symbolic Baseline**: If `RL_Conf < 0.3` or model failure, fallback to `100% Rule Engine`. The system MUST NOT place bets based purely on low-confidence neural signals.
+
 ---
 
 ## 3. Frontend Architecture (Flutter/Dart)
@@ -174,34 +203,34 @@ python -c "from Core.System.data_readiness import DataReadinessChecker; print('[
 
 ### 5.1 Font: Google Fonts — Lexend
 
-| Level | Size | Weight | Spacing | Color |
-|-------|------|--------|---------|-------|
-| `displayLarge` | 22px | w700 (Bold) | -1.0 | `#FFFFFF` |
-| `titleLarge` | 15px | w600 (SemiBold) | -0.3 | `#FFFFFF` |
-| `titleMedium` | 13px | w600 | default | `#F1F5F9` |
-| `bodyLarge` | 13px | w400 | default | `#F1F5F9` |
-| `bodyMedium` | 11px | w400 | default | `#64748B` |
+| Level          | Size | Weight          | Spacing | Color     |
+| -------------- | ---- | --------------- | ------- | --------- |
+| `displayLarge` | 22px | w700 (Bold)     | -1.0    | `#FFFFFF` |
+| `titleLarge`   | 15px | w600 (SemiBold) | -0.3    | `#FFFFFF` |
+| `titleMedium`  | 13px | w600            | default | `#F1F5F9` |
+| `bodyLarge`    | 13px | w400            | default | `#F1F5F9` |
+| `bodyMedium`   | 11px | w400            | default | `#64748B` |
 
 ### 5.2 Color Palette
 
 #### Brand & Primary
-| Token | Hex | Usage |
-|-------|-----|-------|
+| Token                      | Hex       | Usage                      |
+| -------------------------- | --------- | -------------------------- |
 | `primary` / `electricBlue` | `#137FEC` | Buttons, active indicators |
 
 #### Glass Tokens (60% translucency default)
-| Token | Hex | Alpha |
-|-------|-----|-------|
-| `glassDark` | `#1A2332` | 60% (`0x99`) |
-| `glassLight` | `#FFFFFF` | 60% |
-| `glassBorderDark` | `#FFFFFF` | 10% |
+| Token             | Hex       | Alpha        |
+| ----------------- | --------- | ------------ |
+| `glassDark`       | `#1A2332` | 60% (`0x99`) |
+| `glassLight`      | `#FFFFFF` | 60%          |
+| `glassBorderDark` | `#FFFFFF` | 10%          |
 
 ### 5.3 Performance Modes (`GlassSettings`)
-| Mode | Blur | Target |
-|------|------|--------|
-| `full` | 24σ | High-end devices |
-| `medium` | 8σ | Mid-range devices |
-| `none` | 0σ | Low-end devices |
+| Mode     | Blur | Target            |
+| -------- | ---- | ----------------- |
+| `full`   | 24σ  | High-end devices  |
+| `medium` | 8σ   | Mid-range devices |
+| `none`   | 0σ   | Low-end devices   |
 
 ---
 
@@ -209,20 +238,20 @@ python -c "from Core.System.data_readiness import DataReadinessChecker; print('[
 
 > **MANDATORY** for all failure investigation and resolution. Follow in exact order.
 
-| Step | Action | Rule |
-|------|--------|------|
-| **1. Define** | What is the problem? | Focus on understanding — no blame. |
-| **2. Validate** | Is it really a problem? | Pause. Does this actually need solving? |
-| **3. Expand** | What else is the problem? | Look for hidden or related issues. |
-| **4. Trace** | How did it occur? | Reverse-engineer the timeline. |
-| **5. Brainstorm** | ALL possible solutions. | No filtering yet. |
-| **6. Evaluate** | Best solution right now? | Consider resources and time. |
-| **7. Decide** | Commit to the solution. | No second-guessing. |
-| **8. Assign** | Actionable steps. | Systematic and specific. |
-| **9. Measure** | Define "solved". | Expected effects? |
-| **10. Start** | Take first action. | Momentum matters. |
-| **11. Complete** | Finish every step. | No half-measures. |
-| **12. Review** | Compare outcomes. | Repeat if not solved. |
+| Step              | Action                    | Rule                                    |
+| ----------------- | ------------------------- | --------------------------------------- |
+| **1. Define**     | What is the problem?      | Focus on understanding — no blame.      |
+| **2. Validate**   | Is it really a problem?   | Pause. Does this actually need solving? |
+| **3. Expand**     | What else is the problem? | Look for hidden or related issues.      |
+| **4. Trace**      | How did it occur?         | Reverse-engineer the timeline.          |
+| **5. Brainstorm** | ALL possible solutions.   | No filtering yet.                       |
+| **6. Evaluate**   | Best solution right now?  | Consider resources and time.            |
+| **7. Decide**     | Commit to the solution.   | No second-guessing.                     |
+| **8. Assign**     | Actionable steps.         | Systematic and specific.                |
+| **9. Measure**    | Define "solved".          | Expected effects?                       |
+| **10. Start**     | Take first action.        | Momentum matters.                       |
+| **11. Complete**  | Finish every step.        | No half-measures.                       |
+| **12. Review**    | Compare outcomes.         | Repeat if not solved.                   |
 
 ---
 
@@ -253,5 +282,5 @@ python -c "from Core.System.data_readiness import DataReadinessChecker; print('[
 
 ---
 
-*Last updated: March 6, 2026 (v7.2 — Push-Only Sync + Safety Guardrails + 13-Discrepancy Resolution)*
+*Last updated: March 7, 2026 (v7.3 — Supervisor-Worker + Neuro-Symbolic Ensemble + Data Quality v7.1)*
 *Authored by: LeoBook Engineering Team — Materialless LLC*

@@ -412,7 +412,7 @@ async def run_utility(args):
         print(f"  [SUCCESS] Watermark for '{table}' reset. Run with --sync to push all rows.")
 
     elif getattr(args, 'pull', False):
-        print("\n  --- LEO: Pull ALL from Supabase → local SQLite ---")
+        print("\n  --- LEO: FORCE FULL PULL — Supabase → local SQLite ---")
         init_db()
         sync_mgr = SyncManager()
         from Data.Access.sync_manager import TABLE_CONFIG
@@ -421,13 +421,15 @@ async def run_utility(args):
             local_table = config['local_table']
             remote_table = config['remote_table']
             key_field = config['key']
-            print(f"   Pulling {remote_table}...")
+            print(f"   [{remote_table}] Pulling from Supabase...")
             pulled = await sync_mgr._bootstrap_from_remote(local_table, remote_table, key_field)
             if pulled > 0:
                 sync_mgr._set_watermark(remote_table, dt.now().isoformat())
+                print(f"   [{remote_table}] [OK] {pulled:,} rows pulled (upserted into SQLite)")
+            else:
+                print(f"   [{remote_table}] [OK] Remote empty — nothing to pull")
             total += pulled
-            print(f"   [{remote_table}] ✓ {pulled} rows")
-        print(f"\n  [SUCCESS] Total pulled: {total} rows")
+        print(f"\n  [SUCCESS] Total pulled: {total:,} rows across {len(TABLE_CONFIG)} tables")
 
     elif args.recommend:
         print("\n  --- LEO: Generate Recommendations ---")

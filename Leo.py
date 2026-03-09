@@ -508,6 +508,21 @@ async def run_utility(args):
             trainer.train_from_fixtures(phase=phase, cold=cold, limit_days=limit, resume=resume)
         print("  [SUCCESS] RL training session complete.")
 
+    elif args.backtest_rl:
+        print("\n  --- LEO: RL Walk-Forward Backtest ---")
+        from Core.Intelligence.rl.backtest import WalkForwardBacktester
+        from Core.Utils.constants import now_ng
+        conn = init_db()
+        bt_end = args.bt_end or now_ng().strftime("%Y-%m-%d")
+        bt = WalkForwardBacktester(
+            conn,
+            train_days=args.bt_train_days,
+            eval_days=1,
+        )
+        summary = bt.run(args.bt_start, bt_end)
+        bt._write_report(args.bt_output)
+        print(f"  [Backtest] Report written to {args.bt_output}")
+
 
 # ============================================================
 # DISPATCH — Routes CLI args to the appropriate functions
@@ -609,7 +624,7 @@ if __name__ == "__main__":
                       args.rule_engine, args.streamer,
                       args.assets,
                       args.logos, args.enrich_leagues, args.upgrade_crests,
-                      args.train_rl])
+                      args.train_rl, args.backtest_rl])
     is_granular = args.prologue or args.chapter is not None
 
     try:

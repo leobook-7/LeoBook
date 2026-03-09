@@ -228,7 +228,19 @@ Examples:
     parser.add_argument('--resume', action='store_true',
                         help='Resume training from latest checkpoint (use with --train-rl)')
 
-    # --- Rule Engine Management ---
+    # --- RL Backtest ---
+    parser.add_argument('--backtest-rl', action='store_true',
+                        help='Walk-forward RL backtest on historical data')
+    parser.add_argument('--bt-train-days', type=int, default=60, metavar='N',
+                        help='Rolling train window in days (default: 60)')
+    parser.add_argument('--bt-start', type=str, default='2026-01-01', metavar='DATE',
+                        help='First eval date YYYY-MM-DD (default: 2026-01-01)')
+    parser.add_argument('--bt-end', type=str, default=None, metavar='DATE',
+                        help='Last eval date YYYY-MM-DD (default: today)')
+    parser.add_argument('--bt-output', type=str, default='Data/Log/backtest_report.txt',
+                        metavar='PATH',
+                        help='Path to write backtest report (default: Data/Log/backtest_report.txt)')
+
     parser.add_argument('--rule-engine', action='store_true',
                        help='Show default rule engine info (combine with --list, --set-default, --backtest)')
     parser.add_argument('--backtest', action='store_true',

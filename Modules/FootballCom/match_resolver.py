@@ -1,10 +1,13 @@
-# match_resolver.py: match_resolver.py: Intelligent match resolution using Google GenAI (GrokMatcher)
+# match_resolver.py: Intelligent match resolution using Google GenAI (GrokMatcher)
 # Part of LeoBook Modules — Football.com
 #
 # Classes: GrokMatcher
 
 import os
 import re
+import json
+import sqlite3
+import asyncio                          # FIX: moved to top-level (was inside _llm_resolve)
 from typing import List, Dict, Optional, Tuple, Set
 from Levenshtein import distance, ratio
 
@@ -126,10 +129,6 @@ def _team_score(fs_team: str, fb_team: str) -> float:
     return max(lev, jaccard, token_avg, substr)
 
 
-
-import json
-import sqlite3
-
 class GrokMatcher:
     def __init__(self):
         self.use_llm = HAS_GEMINI
@@ -225,6 +224,15 @@ class GrokMatcher:
 
         # --- LAYER 2: Hybrid Fuzzy ---
         best_fuzzy, fuzzy_score = self._fuzzy_resolve(fs_name, fb_matches)
+
+        # FIX: Auto-learn on high-confidence fuzzy hits (≥ 90), not just LLM.
+        # This captures systematic patterns (e.g. "Guarani FC SP" ↔ "Guarani SP")
+        # that fuzzy resolves correctly but Layer 1 would miss on the next run.
+        if fuzzy_score >= 90 and best_fuzzy:
+            final_home = self._get_name(best_fuzzy, 'home')
+            final_away = self._get_name(best_fuzzy, 'away')
+            if home_id: self._auto_learn(conn, home_id, final_home)
+            if away_id: self._auto_learn(conn, away_id, final_away)
         
         if fuzzy_score >= 85:
             print(f"    [Resolver] {fs_name} -> {self._get_name(best_fuzzy, 'home')} vs {self._get_name(best_fuzzy, 'away')} | layer2 (fuzzy) | score={fuzzy_score:.1f}")
@@ -317,8 +325,22 @@ class GrokMatcher:
 
         return best_match, best_score
 
-    async def _llm_resolve(self, fs_name: str, fb_matches: List[Dict], fallback_match, fallback_score) -> Tuple[Optional[Dict], float]:
-        """Call Gemini via LLMHealthManager for multi-key/model rotation."""
+    async def _llm_resolve(
+        self,
+        fs_name: str,
+        fb_matches: List[Dict],
+        fallback_match,
+        fallback_score,
+    ) -> Tuple[Optional[Dict], float]:
+        """Call Gemini via LLMHealthManager for multi-key/model rotation.
+
+        FIX: Rotates through ALL available keys per model (while-loop), not
+        just one. A single 429 on key K no longer discards the entire model.
+        FIX: Calls on_gemini_fatal_error() for 403, replacing the non-existent
+             on_gemini_403() which caused a silent AttributeError.
+        FIX: Passes err_str to on_gemini_429() so daily-limit detection works.
+        FIX: Skips models already marked daily-exhausted before attempting.
+        """
         from Core.Intelligence.llm_health_manager import health_manager
         await health_manager.ensure_initialized()
 
@@ -338,38 +360,61 @@ class GrokMatcher:
         model_chain = health_manager.get_model_chain("aigo")
 
         for model_name in model_chain:
-            api_key = health_manager.get_next_gemini_key(model=model_name)
-            if not api_key:
+            # FIX: skip models already daily-exhausted — avoids hammering a dead model
+            if health_manager.is_model_daily_exhausted(model_name):
+                print(f"    [GrokMatcher] Skipping {model_name} — daily quota exhausted.")
                 continue
-            try:
-                import asyncio
-                client = genai.Client(api_key=api_key)
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model_name,
-                    contents=prompt_text
-                )
-                
-                answer = response.text.strip().lower() if response.text else ""
-                
-                if "none" in answer or not answer:
+
+            # FIX: rotate through ALL available keys per model, not just one.
+            # Mirrors the while-True pattern from build_search_dict.py.
+            while True:
+                api_key = health_manager.get_next_gemini_key(model=model_name)
+                if not api_key:
+                    # All keys for this model are cooled or model is daily-dead
+                    print(f"    [GrokMatcher] No available keys for {model_name}, trying next model...")
+                    break
+                try:
+                    client = genai.Client(api_key=api_key)
+                    response = await asyncio.to_thread(
+                        client.models.generate_content,
+                        model=model_name,
+                        contents=prompt_text
+                    )
+                    
+                    answer = response.text.strip().lower() if response.text else ""
+                    
+                    if "none" in answer or not answer:
+                        return None, 0.0
+                    
+                    for i, cand in enumerate(candidates):
+                        if cand.lower() in answer or answer in cand.lower():
+                            return fb_matches[i], 99.0
+                    
                     return None, 0.0
-                
-                for i, cand in enumerate(candidates):
-                    if cand.lower() in answer or answer in cand.lower():
-                        return fb_matches[i], 99.0
-                
-                return None, 0.0
-                
-            except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    health_manager.on_gemini_429(api_key, model=model_name)
-                    continue  # Try next model
-                elif "403" in err_str:
-                    health_manager.on_gemini_403(api_key)
-                    continue
-                print(f"    [GrokMatcher] LLM error on {model_name}: {e}")
-                break
+                    
+                except Exception as e:
+                    err_str = str(e)
+                    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        # FIX: pass err_str for daily-limit detection
+                        health_manager.on_gemini_429(api_key, model=model_name, err_str=err_str)
+                        if health_manager.is_model_daily_exhausted(model_name):
+                            # Daily limit hit — no point trying more keys for this model
+                            break
+                        # Per-minute throttle — try next key for same model
+                        continue
+                    elif "403" in err_str:
+                        # FIX: was on_gemini_403() which doesn't exist — caused AttributeError
+                        health_manager.on_gemini_fatal_error(api_key, "403 Forbidden")
+                        # Key is gone; loop will get the next one
+                        continue
+                    elif "401" in err_str or "UNAUTHORIZED" in err_str:
+                        health_manager.on_gemini_fatal_error(api_key, "401 Unauthorized")
+                        continue
+                    elif "400" in err_str and "INVALID_ARGUMENT" in err_str:
+                        health_manager.on_gemini_fatal_error(api_key, "400 Invalid Argument")
+                        continue
+                    # Non-retryable error — log and abandon this model
+                    print(f"    [GrokMatcher] LLM error on {model_name}: {e}")
+                    break
 
         return None, 0.0

@@ -1,4 +1,4 @@
-> **Version**: 8.1.0 "Stairway Engine" · **Last Updated**: 2026-03-12 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + Safety Guardrails v1.0
+> **Version**: 8.1.1 "Stairway Engine" · **Last Updated**: 2026-03-13 · **Architecture**: 3-Phase RL (Poisson Grounding) + 30-dim Action Space + Chapter 1 v9.0 Direct Harvesting + Safety Guardrails v1.0
 
 ## Table of Contents
 
@@ -56,7 +56,7 @@ LeoBook uses **two external data sources** for distinct purposes:
 | **Local machine** | `C:\Users\Admin\Desktop\ProProjection\LeoBook` — **contaminated**, awaiting git triage |
 | **LLM** | Gemini 2.5 Pro (daily quota constraints apply — key rotation pool active) |
 | **Cloud infra** | Oracle Cloud — in setup, pending user action |
-| **RL Training** | Day **34 of 99** (Phase 1, background process) |
+| **RL Training** | Day **50** (Phase 1, background process — `python Leo.py --train-rl --resume`) |
 | **Backtest** | 45-day run (background process) |
 
 ---
@@ -118,10 +118,9 @@ LeoBook employs a dual-validation strategy to ensure model reliability before re
 
 | File                                     | Function                                                          |
 | ---------------------------------------- | ----------------------------------------------------------------- |
-| `Modules/Flashscore/fs_processor.py`     | Per-match H2H + Enrichment + Search Dict                          |
 | `Modules/Flashscore/fs_live_streamer.py` | Isolated live score streaming + outcome review + accuracy reports |
-| `Modules/FootballCom/fb_manager.py`      | Odds harvesting, automated booking — **under active review** for Ch1 P1 |
-| `Modules/FootballCom/match_resolver.py`  | Match identity resolution — **under active review** for Ch1 P1   |
+| `Modules/FootballCom/fb_manager.py`      | Odds harvesting, automated booking — Ch1 P1 key mismatch **✅ resolved** |
+| `Modules/FootballCom/match_resolver.py`  | Match identity resolution — key fallback chain + alias injection **✅ resolved** |
 
 ### 2.4 `Data/` — Persistence Layer
 
@@ -224,11 +223,12 @@ Leo.py orchestrates the cycle with autonomous task management:
 
 ### Active Blockers
 
-| Blocker | Resolution |
+| Blocker | Status |
 |---------|-----------|
-| Gemini 2.5 Pro daily quota exhausted during Run 7 | Await midnight UTC quota reset |
+| Gemini 2.5 Pro daily quota exhausted during Run 7 | Monitored — daily/per-minute distinction now tracked. Await quota reset |
 | Browser crash after Run 7 | Browser restart required before Run 8 |
-| `llm_health_manager.py` Fix 6 pending | Broaden `_ping_key` to treat HTTP 400 as dead-key signal (alongside 401/403) |
+| `llm_health_manager.py` Fix 6 | ✅ Resolved — `_ping_key` treats HTTP 400+INVALID_ARGUMENT as FATAL (2026-03-13) |
+| LR scheduler state not persisted in checkpoint | ❌ Open — each `--resume` re-applies 10x LR reduction. Fix: save/load `scheduler.state_dict()` |
 
 ---
 
@@ -369,11 +369,11 @@ The `StaircaseTracker` class in `Core/System/guardrails.py` persists state in th
 | Metric                   | Value             | Notes                                                        |
 | ------------------------ | ----------------- | ------------------------------------------------------------ |
 | Action Space             | 30 Actions        | Expanded from 8 in v8.0 (1X2, DC, OU, BTTS)                  |
-| RL Training              | Phase 1 — Day 34/99 | Poisson expert grounding provides robust base for imitation. |
+| RL Training              | Phase 1 — Day **50** | Background process active (`--train-rl --resume`). Checkpoint rotation: keep last 5. |
 | Rule Engine Accuracy     | Untested at scale | Individual rule components work; aggregate accuracy unknown. |
 | Calibration              | 3-Phase PPO       | v8.0 introduces KL divergence for stable calibration.        |
 | Per-Step Win Probability | **Unmeasured**    | The foundational number for Project Stairway viability.      |
-| Ch1 P1 Pipeline          | Runs 1–7 complete | Run 8 blocked (quota + browser restart)                      |
+| Ch1 P1 Pipeline          | Runs 1–7 complete | P1 Key Mismatch ✅ resolved. Run 8 blocked (browser restart)  |
 | Backtest                 | 45-day run active | No report output yet                                         |
 
 ### Open Quests (To Be Answered by Pipeline Testing)
@@ -452,6 +452,15 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 
 ## 11. Changelog
 
+### v8.1.1 — Audit + Dead Code Removal (March 13, 2026)
+- **Dead Code Removed** (`93c2a61`): 4 orphaned Flashscore per-match files deleted (~1,874 lines): `Scripts/enrich_all_schedules.py`, `Modules/Flashscore/fs_processor.py`, `Modules/Flashscore/manager.py`, `Core/Browser/Extractors/standings_extractor.py`. RULEBOOK §2.7 compliance restored.
+- **Leo.py Patched**: Dead `enrich_all_schedules` import removed. `TASK_DAY_BEFORE_PREDICT` handler rewired to `prediction_pipeline.run_predictions()`. TODO inline for `target_fixture_ids` scoping.
+- **P1 Key Mismatch**: ✅ Confirmed resolved — alias injection `{**m, 'home_team': m.get('home', ''), 'away_team': m.get('away', '')}` at `fb_manager.py:257-260`.
+- **Fix 6 (HTTP 400)**: ✅ Confirmed resolved — `_ping_key()` returns `FATAL` on `400 + INVALID_ARGUMENT` at `llm_health_manager.py:392`.
+- **RL Training**: Phase 1 Day **50** (background process ongoing — `python Leo.py --train-rl --resume`).
+- **LR Scheduler Bug Confirmed** ❌: `scheduler.state_dict()` absent from checkpoint. Each `--resume` re-applies 10x LR reduction. Fix: save/load `scheduler.state_dict()`.
+- **Audit**: [`leobook_technical_audit_20260313.md`](file:///c:/Users/Admin/Desktop/ProProjection/LeoBook/leobook_technical_audit_20260313.md) generated.
+
 ### v8.1.0 — Pipeline & Documentation Update (March 12, 2026)
 - **Ch1 P1 Status**: Runs 1–7 complete. Run 8 blocked (Gemini quota + browser restart).
 - **RL Training**: Phase 1 Day 34 of 99 (background process active).
@@ -478,5 +487,5 @@ These are intellectually honest unknowns. They will be answered by data, not ass
 - **Time-Based Cooldowns**: Replaced permanent key exhaustion with 65-second auto-recovery in `llm_health_manager.py`.
 - **Exponential Backoff**: `min(2^n, 30)` second delays on consecutive 429s in `build_search_dict.py` and `api_manager.py`.
 
-*Last updated: March 12, 2026 (v8.1.0 — Pipeline Update + Stairway Clarification)*  
+*Last updated: March 13, 2026 (v8.1.1 — Audit + Dead Code Removal)*
 *LeoBook Engineering Team — Materialless LLC*

@@ -826,7 +826,10 @@ async def extract_tab(
         return 0
 
     fixture_rows: List[Dict] = []
-    crest_futures: List[Tuple] = []   # (future, team_name, dest_path)
+    # Maps team_name -> (future, dest_path) — one entry per unique team name.
+    # Using a dict deduplicates: same team appears in many matches but we only
+    # need one crest download per team per tab, not one per match appearance.
+    crest_pending: Dict[str, Tuple] = {}
     today = date.today()
 
     for m in matches_raw:
@@ -851,15 +854,16 @@ async def extract_tab(
             if away_team_url: td["url"]     = away_team_url
             upsert_team(conn, td)
 
+        # Queue crest downloads — deduplicated by team name so we download at
+        # most once per unique team rather than once per match appearance.
         for team_name, crest_url_key in ((home_name, "home_crest_url"), (away_name, "away_crest_url")):
             crest_url = m.get(crest_url_key, "")
-            if crest_url and not crest_url.startswith("data:"):
+            if crest_url and not crest_url.startswith("data:") and team_name not in crest_pending:
                 dest = os.path.join(TEAM_CRESTS_DIR, f"{_slugify(team_name)}.png")
-                crest_futures.append((
+                crest_pending[team_name] = (
                     schedule_image_download(crest_url, dest),
-                    team_name,
                     dest,
-                ))
+                )
 
         status = m.get("match_status", "")
         extra  = m.get("extra")
@@ -917,22 +921,40 @@ async def extract_tab(
     if fixture_rows:
         bulk_upsert_fixtures(conn, fixture_rows)
 
+    # ── Resolve crest futures eagerly — write to SQLite immediately per team ──
+    # Uses as_completed() so each crest is persisted as soon as its download
+    # finishes. No batch accumulation — memory is freed per future, not at end.
+    # Each team row gets its crest URL committed individually so a crash mid-way
+    # only loses the remaining unresolved teams, not all of them.
+    from concurrent.futures import as_completed as futures_as_completed
+
     downloaded = 0
-    for fut, team_name, dest in crest_futures:
+    future_to_name = {fut: name for name, (fut, _dest) in crest_pending.items()}
+
+    for fut in futures_as_completed(future_to_name):
+        team_name = future_to_name[fut]
+        _dest = crest_pending[team_name][1]
         try:
-            local = fut.result(timeout=30)
+            local = fut.result(timeout=0)  # already done — as_completed guarantees it
             if local:
-                downloaded += 1
                 sb_url = upload_crest_to_supabase(local, "team-crests", f"{_slugify(team_name)}.png")
                 crest_val = sb_url if sb_url else local
-                conn.execute(
-                    "UPDATE teams SET crest = ? WHERE name = ? AND country_code = ?",
-                    (crest_val, team_name, country_code)
-                )
+                # Write crest URL to SQLite immediately and commit — no batching
+                cc = country_code or None
+                if cc:
+                    conn.execute(
+                        "UPDATE teams SET crest = ? WHERE name = ? AND (country_code = ? OR country_code IS NULL)",
+                        (crest_val, team_name, cc)
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE teams SET crest = ? WHERE name = ? AND (country_code IS NULL OR country_code = '')",
+                        (crest_val, team_name)
+                    )
+                conn.commit()   # ← immediate, per-team — crash-safe
+                downloaded += 1
         except Exception:
             pass
-    if downloaded:
-        conn.commit()
 
     if fixture_rows:
         backfilled = _backfill_schedule_crests(conn, league_id, season, country_code)

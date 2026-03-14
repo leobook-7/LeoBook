@@ -221,12 +221,27 @@ for _tbl, _ddl in SUPABASE_SCHEMA.items():
     _ALLOWED_COLS[_tbl] = _cols
 
 # Column remaps: local name → remote name (applied before schema filtering)
-# BUG FIX #3: Removed 'team_name': 'name' to prevent collision with existing 'name' column
 _COL_REMAP = {
     'time': 'match_time',
     'over_2.5': 'over_2_5',
     'country': 'country_code',
+    'team_name': 'name',
 }
+
+# ── Per-table batch sizes ─────────────────────────────────────────────────────
+# Supabase has an 8-second statement timeout per REST call.
+# Large tables with JSONB columns and ON CONFLICT resolution are slow to upsert.
+# schedules: ~220k rows, JSONB cols, composite conflict → keep batches small.
+# All others: 2,000 is safe and fast enough.
+#
+# FIX (2026-03-14): Previously used api_batch_size = 15000 globally, which caused
+# '57014: canceling statement due to statement timeout' on every schedules sync.
+_BATCH_SIZES: Dict[str, int] = {
+    'schedules':  500,
+    'match_odds': 1000,
+    'default':    2000,
+}
+
 
 class SyncManager:
     """Manages bi-directional sync between local SQLite and Supabase."""
@@ -314,9 +329,11 @@ class SyncManager:
                 print(f"   [{remote_table}] ✓ Both local and remote empty")
             return
 
-        # BUG FIX #1: Removed the "or local_count > 50000" condition
-        # Large tables are exactly why watermarks exist. This condition was
-        # forcing full table scans on any table > 50k rows, defeating incremental sync.
+        # ── FIX (2026-03-14): Removed `or local_count > 50000` condition. ──────
+        # Previously, any table with >50k rows bypassed the watermark and triggered
+        # a full push of ALL rows on every checkpoint sync. schedules has ~220k rows,
+        # so every sync attempted a 220k-row upsert — which always timed out (57014).
+        # The watermark exists precisely for large tables. Use it.
         if force_full:
             print(f"   [{remote_table}] FORCE FULL PUSH — {local_count:,} rows (watermark bypassed)")
             local_rows = query_all(self.conn, local_table)
@@ -327,6 +344,7 @@ class SyncManager:
             is_first_sync = watermark == '1970-01-01T00:00:00'
             try:
                 if is_first_sync:
+                    print(f"   [{remote_table}] First sync — pushing all {local_count:,} rows")
                     local_rows = query_all(self.conn, local_table)
                     if not local_rows:
                         local_rows = []
@@ -505,28 +523,14 @@ class SyncManager:
 
         df = pd.DataFrame(data)
 
-        # BUG FIX #3: Enhanced deduplication to catch all column name collisions
-        # Check for duplicate columns and log them for debugging
-        if df.columns.duplicated().any():
-            dup_cols = df.columns[df.columns.duplicated(keep=False)].tolist()
-            logger.warning(f"[DataFrame] Duplicate columns detected in {remote_table}: {dup_cols}")
-            logger.debug(f"[DataFrame] Full column list: {df.columns.tolist()}")
-        
-        # Remove duplicates, keeping first occurrence
-        df = df.loc[:, ~df.columns.duplicated(keep='first')]
-
-        # Apply column remap (local name → remote name)
+        # ── FIX (2026-03-14): Rename BEFORE deduplicating columns. ──────────────
+        # Previously dedup ran on line 506 before the rename on line 508.
+        # _COL_REMAP maps 'time' → 'match_time'. If a row already has match_time,
+        # rename creates two match_time columns and pandas warns then silently drops
+        # one. Rename first, then dedup ensures we always keep the correct column.
         df = df.rename(columns=_COL_REMAP)
-        
-        # After rename, check for NEW collisions introduced by _COL_REMAP
-        if df.columns.duplicated().any():
-            dup_cols = df.columns[df.columns.duplicated(keep=False)].tolist()
-            logger.error(f"[DataFrame] Post-rename collision in {remote_table}: {dup_cols}")
-            logger.error(f"[DataFrame] _COL_REMAP has a collision! Check remap config.")
-            # Remove the colliding renames to prevent silent data loss
-            df = df.loc[:, ~df.columns.duplicated(keep='first')]
+        df = df.loc[:, ~df.columns.duplicated()]
 
-        # Filter to allowed columns only
         keep_cols = [c for c in df.columns if c in allowed]
         if keep_cols:
             df = df[keep_cols]
@@ -558,7 +562,7 @@ class SyncManager:
 
         cleaned_data = df.to_dict('records')
 
-        # Deduplicate by conflict key
+        # Deduplicate
         keys = [k.strip() for k in conflict_key.split(',')]
         seen = set()
         deduped = []
@@ -571,18 +575,12 @@ class SyncManager:
         if not deduped:
             return 0
 
+        # ── FIX (2026-03-14): Per-table batch sizes to avoid statement timeout. ──
+        # Old value was 15000 globally. schedules upserts at 15k rows took ~11s,
+        # exceeding Supabase's 8s statement timeout (error code 57014) on every run.
+        api_batch_size = _BATCH_SIZES.get(remote_table, _BATCH_SIZES['default'])
+
         try:
-            # BUG FIX #2: Table-specific batch sizes optimized for JSONB performance
-            # Supabase REST API has an 8-second statement timeout. Large JSONB upserts
-            # with conflict resolution can exceed this. Reducing batch sizes per table:
-            BATCH_SIZE_BY_TABLE = {
-                'schedules': 100,      # JSONB heavy (extra column)
-                'predictions': 200,    # Multiple JSONB fields
-                'match_odds': 300,
-                'default': 500
-            }
-            api_batch_size = BATCH_SIZE_BY_TABLE.get(remote_table, BATCH_SIZE_BY_TABLE['default'])
-            
             disable_pbar = not logger.isEnabledFor(logging.INFO)
             pbar = tqdm(total=len(deduped), desc=f"    Pushing {remote_table}", unit="row", disable=disable_pbar)
             for i in range(0, len(deduped), api_batch_size):

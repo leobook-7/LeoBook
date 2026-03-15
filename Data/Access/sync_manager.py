@@ -5,6 +5,7 @@
 # Functions: run_full_sync()
 
 import logging
+import sys
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
@@ -77,7 +78,16 @@ class SyncManager:
             logger.warning(f"    [!] Table '{remote_table}' still missing after auto-create attempt.")
             return False
 
-    async def sync_on_startup(self, force_full: bool = True) -> None:
+    async def sync_on_startup(self, force_full: bool = False) -> None:
+        """Push-only sync on startup using watermark delta detection.
+
+        force_full=False (default): only push rows modified since last sync.
+        force_full=True: push all rows regardless of watermark (fresh-install/recovery).
+
+        A fresh install is handled by the local_count == 0 check inside
+        _sync_table(), which bootstraps from Supabase for empty tables.
+        This default change eliminates the 44s penalty on every restart.
+        """
         if not self.supabase:
             return
         logger.info("Starting push-only sync on startup...")
@@ -213,11 +223,18 @@ class SyncManager:
         page_size = 15000  # Supabase may return fewer; we paginate by actual len(rows)
         offset = 0
         disable_pbar = not logger.isEnabledFor(logging.INFO)
+        # Route tqdm to the original terminal stream, bypassing RotatingSegmentLogger.
+        # RotatingSegmentLogger stores original streams in self._streams; if sys.stderr
+        # has been replaced, retrieve the underlying stream to keep tqdm off the log file.
+        _tqdm_stream = getattr(sys.stderr, '_streams', [sys.stderr])[0] \
+            if hasattr(sys.stderr, '_streams') else sys.stderr
         pbar = tqdm(
             total=remote_count,  # None = indeterminate spinner
             desc=f"    Pulling {remote_table}",
             unit="row",
-            disable=disable_pbar
+            disable=disable_pbar,
+            file=_tqdm_stream,
+            dynamic_ncols=True,
         )
 
         try:
@@ -360,7 +377,16 @@ class SyncManager:
 
         try:
             disable_pbar = not logger.isEnabledFor(logging.INFO)
-            pbar = tqdm(total=len(deduped), desc=f"    Pushing {remote_table}", unit="row", disable=disable_pbar)
+            _tqdm_stream = getattr(sys.stderr, '_streams', [sys.stderr])[0] \
+                if hasattr(sys.stderr, '_streams') else sys.stderr
+            pbar = tqdm(
+                total=len(deduped),
+                desc=f"    Pushing {remote_table}",
+                unit="row",
+                disable=disable_pbar,
+                file=_tqdm_stream,
+                dynamic_ncols=True,
+            )
             for i in range(0, len(deduped), api_batch_size):
                 batch = deduped[i:i + api_batch_size]
                 try:

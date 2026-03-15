@@ -115,10 +115,13 @@ async def run_prologue_p2():
             await auto_remediate("seasons")
             ready, stats = check_seasons_ready()
 
-        log_audit_event("PROLOGUE_P2",
-                        f"Seasons: {stats['leagues_with_enough_seasons']}/"
-                        f"{stats['total_leagues_with_fixtures']} leagues OK",
-                        status="success" if ready else "partial_failure")
+        log_audit_event(
+            "PROLOGUE_P2",
+            f"Seasons: {stats.get('total_seasons', 0)} computed | "
+            f"RL tier: {stats.get('rl_tier', 'UNKNOWN')} | "
+            f"Gaps: {stats.get('critical_gaps', 0)} critical",
+            status="success" if ready else "partial_failure"
+        )
     except Exception as e:
         print(f"  [Error] Prologue P2 failed: {e}")
         log_audit_event("PROLOGUE_P2", f"Failed: {e}", status="failed")

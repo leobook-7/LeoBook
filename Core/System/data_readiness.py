@@ -16,6 +16,10 @@ from Data.Access.league_db import init_db, query_all
 
 logger = logging.getLogger(__name__)
 
+# Increment this when the stats dict schema changes.
+# Causes stale caches written by an old schema to be ignored on read.
+_CACHE_SCHEMA_VERSION = "9.3"
+
 # Path to leagues.json (source of truth for expected leagues)
 _LEAGUES_JSON = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), '..', '..', 'Config', 'leagues.json'
@@ -48,15 +52,17 @@ def update_cache(gate_id: str, is_ready: bool, details: Dict):
     """Persist check results to the materialized cache table."""
     from Data.Access.league_db import init_db
     from Core.Utils.constants import now_ng
+    details_with_version = {**details, "_schema_version": _CACHE_SCHEMA_VERSION}
     conn = init_db()
     conn.execute("""
         INSERT OR REPLACE INTO readiness_cache (gate_id, is_ready, details, updated_at)
         VALUES (?, ?, ?, ?)
-    """, (gate_id, 1 if is_ready else 0, json.dumps(details), now_ng().isoformat()))
+    """, (gate_id, 1 if is_ready else 0, json.dumps(details_with_version), now_ng().isoformat()))
     conn.commit()
 
 def _read_cache(gate_id: str) -> Optional[Tuple[bool, Dict]]:
-    """Internal: Reads from readiness_cache if not bypassed."""
+    """Internal: Reads from readiness_cache if not bypassed.
+    Returns None if the cache is missing, bypassed, or uses an old schema version."""
     # Check if --bypass-cache is in CLI
     import sys
     if '--bypass-cache' in sys.argv:
@@ -67,7 +73,14 @@ def _read_cache(gate_id: str) -> Optional[Tuple[bool, Dict]]:
     try:
         row = conn.execute("SELECT is_ready, details FROM readiness_cache WHERE gate_id = ?", (gate_id,)).fetchone()
         if row:
-            return bool(row[0]), json.loads(row[1])
+            details = json.loads(row[1])
+            # Invalidate cache if written by an older schema version
+            if details.get("_schema_version") != _CACHE_SCHEMA_VERSION:
+                conn.execute("DELETE FROM readiness_cache WHERE gate_id = ?", (gate_id,))
+                conn.commit()
+                logger.info(f"[Cache] Stale schema for gate '{gate_id}' — cleared, will re-scan.")
+                return None
+            return bool(row[0]), details
     except Exception:
         pass
     return None

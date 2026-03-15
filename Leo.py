@@ -71,7 +71,7 @@ from Modules.FootballCom.fb_manager import run_odds_harvesting, run_automated_bo
 from Scripts.recommend_bets import get_recommendations
 from Core.Intelligence.prediction_pipeline import run_predictions, get_weekly_fixtures
 from Scripts.enrich_leagues import main as run_league_enricher
-from Modules.Assets.asset_manager import sync_team_assets, sync_league_assets, sync_region_flags
+from Data.Access.asset_manager import sync_team_assets, sync_league_assets, sync_region_flags
 
 
 # Configuration
@@ -104,6 +104,14 @@ async def run_utility(args):
         print("\n  --- LEO: Force Push-Only Sync ---")
         await run_full_sync(session_name="Manual Sync")
         print("  [SUCCESS] Sync complete.")
+        # Sync unuploaded log segments to Supabase Storage
+        try:
+            from Data.Access.log_sync import LogSync
+            log_synced = LogSync().push()
+            if log_synced:
+                print(f"  [LogSync] {log_synced} log segment(s) uploaded to Supabase.")
+        except Exception as e:
+            print(f"  [LogSync] Log sync skipped: {e}")
 
     elif getattr(args, 'reset_sync', None):
         print(f"\n  --- LEO: Reset Sync Watermark [{args.reset_sync}] ---")
@@ -365,7 +373,7 @@ async def main():
 
 if __name__ == "__main__":
     args = parse_args()
-    log_file, original_stdout, original_stderr = setup_terminal_logging(args)
+    _log_session, original_stdout, original_stderr = setup_terminal_logging(args)
 
     # Determine which mode to run
     is_utility = any([args.sync, getattr(args, 'pull', False),
@@ -473,4 +481,8 @@ if __name__ == "__main__":
         print("\n   --- LEO: Shutting down. ---")
     finally:
         sys.stdout, sys.stderr = original_stdout, original_stderr
-        log_file.close()
+        # Close final segment and trigger last upload before process exits
+        try:
+            _log_session.close_segment()
+        except Exception:
+            pass

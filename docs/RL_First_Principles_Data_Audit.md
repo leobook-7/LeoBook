@@ -1,7 +1,11 @@
 # RL First-Principles Data Audit
 
-**Date:** 2026-03-08  
+**Date:** 2026-03-15 (Updated — v9.1 Season Awareness addendum)
+**Original Audit Date:** 2026-03-08
 **Scope:** Complete trace of the Rule Engine data pipeline — every parameter, computation, SQL query, and data source — and all mismatches between live inference and Phase 1 RL training.
+
+> [!IMPORTANT]
+> **v9.1 Addendum**: `data_richness_score` per league now scales `W_neural` in the ensemble. Current DB state: RL tier = `RULE_ENGINE` (1 season per league). Advance to PARTIAL/FULL tier before RL training produces meaningful output. See §Season Awareness below.
 
 ---
 
@@ -527,6 +531,34 @@ This maps raw confidence categories → calibrated expectation. So a "Very High"
 
 ---
 
+## Season Awareness (v9.1)
+
+`data_richness_score` per league measures how many prior finished seasons exist beyond the current one. This score scales `W_neural` in `EnsembleEngine.merge()`.
+
+| Prior Seasons | `data_richness_score` | `W_neural` (default max 0.3) | RL Tier |
+|---|---|---|---|
+| 0 | 0.0 | 0.0 | `RULE_ENGINE` |
+| 1 | 0.33 | ≈0.10 | `PARTIAL` |
+| 2 | 0.67 | ≈0.20 | `PARTIAL` |
+| 3+ | 1.0 | 0.30 | `FULL` |
+
+**Current DB state (2026-03-15):** 1,281 leagues with current season only. RL tier = `RULE_ENGINE`. The Rule Engine is the sole prediction engine until historical depth is enriched.
+
+To advance the RL tier:
+```bash
+# Advance to PARTIAL (1 prior season per league)
+python Leo.py --enrich-leagues --seasons 2
+
+# Advance to FULL (3+ prior seasons per league)
+python Leo.py --enrich-leagues --seasons 4
+```
+
+This is the **top priority before RL training produces meaningful output.** The Rule Engine baseline is fully functional at all tiers and will dominate predictions until PARTIAL/FULL tier is reached.
+
+Scores are loaded in bulk once per pipeline run (one DB query, cached 6 hours) via `EnsembleEngine._load_richness_cache()`. Individual scores come from `SeasonCompletenessTracker.get_data_richness_score(league_id, current_season)`.
+
+---
+
 ## Prioritized Fix List
 
 Ordered by training impact (highest first):
@@ -611,17 +643,25 @@ graph TD
 
 ### Files Referenced
 
-| File                   | Path                                       | Role                                                    |
+| File | Path | Role |
 | ---------------------- | ------------------------------------------ | ------------------------------------------------------- |
-| rule_engine.py         | `Core/Intelligence/rule_engine.py`         | Main prediction logic                                   |
-| rule_config.py         | `Core/Intelligence/rule_config.py`         | Configurable weights & parameters                       |
+| rule_engine.py | `Core/Intelligence/rule_engine.py` | Main prediction logic |
+| rule_config.py | `Core/Intelligence/rule_config.py` | Configurable weights & parameters |
 | prediction_pipeline.py | `Core/Intelligence/prediction_pipeline.py` | Live data fetching (form, H2H, standings → vision_data) |
-| tag_generator.py       | `Core/Intelligence/tag_generator.py`       | Converts raw stats → string tags                        |
-| goal_predictor.py      | `Core/Intelligence/goal_predictor.py`      | Goal distributions & xG                                 |
-| betting_markets.py     | `Core/Intelligence/betting_markets.py`     | Market prediction generation & selection                |
-| learning_engine.py     | `Core/Intelligence/learning_engine.py`     | Adaptive weight learning per region                     |
-| ensemble.py            | `Core/Intelligence/ensemble.py`            | Merges Rule Engine + RL outputs                         |
-| trainer.py             | `Core/Intelligence/rl/trainer.py`          | RL training (Phase 1/2/3)                               |
-| feature_encoder.py     | `Core/Intelligence/rl/feature_encoder.py`  | vision_data → 192-dim tensor                            |
-| league_db.py           | `Data/Access/league_db.py`                 | SQLite DB layer + computed_standings                    |
-| rule_engine_manager.py | `Core/Intelligence/rule_engine_manager.py` | Rule engine CRUD + default weights                      |
+| tag_generator.py | `Core/Intelligence/tag_generator.py` | Converts raw stats → string tags |
+| goal_predictor.py | `Core/Intelligence/goal_predictor.py` | Goal distributions & xG |
+| betting_markets.py | `Core/Intelligence/betting_markets.py` | Market prediction generation & selection |
+| learning_engine.py | `Core/Intelligence/learning_engine.py` | Adaptive weight learning per region |
+| ensemble.py | `Core/Intelligence/ensemble.py` | Merges Rule Engine + RL outputs — `data_richness_score` scaling (v9.1) |
+| trainer.py | `Core/Intelligence/rl/trainer.py` | RL training core class |
+| trainer_phases.py | `Core/Intelligence/rl/trainer_phases.py` | Phase 1/2/3 reward functions (split from trainer.py, v9.1) |
+| trainer_io.py | `Core/Intelligence/rl/trainer_io.py` | Save/load/checkpoint management (split from trainer.py, v9.1) |
+| feature_encoder.py | `Core/Intelligence/rl/feature_encoder.py` | vision_data → 192-dim tensor |
+| league_db.py | `Data/Access/league_db.py` | SQLite DB layer + computed_standings |
+| season_completeness.py | `Data/Access/season_completeness.py` | `get_data_richness_score()` — per-league RL tier score (v9.1) |
+| rule_engine_manager.py | `Core/Intelligence/rule_engine_manager.py` | Rule engine CRUD + default weights |
+
+---
+
+*Last updated: 2026-03-15 (v9.1 — Season Awareness addendum: data_richness_score, RL tier, trainer_phases/trainer_io split references)*
+*Original audit: 2026-03-08 — LeoBook Engineering Team — Materialless LLC*

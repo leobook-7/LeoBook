@@ -1,0 +1,25 @@
+# LeoBook — Core Dependencies
+# Install: pip install -r requirements.txt
+# RL/PyTorch dependencies: pip install -r requirements-rl.txt
+
+# Web scraping & browser automation
+playwright>=1.40.0
+
+# HTTP / networking
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# Supabase
+supabase>=2.3.0
+
+# Data processing
+pandas>=2.1.0
+
+# Environment & config
+python-dotenv>=1.0.0
+
+# Async utilities
+asyncio-throttle>=1.0.2
+
+# Logging / monitoring (optional, used in some modules)
+colorlog>=6.8.0

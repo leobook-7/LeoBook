@@ -9,6 +9,9 @@ load_dotenv()
 # All timestamps across the system MUST use this timezone for consistency
 # regardless of platform (local Windows, GitHub Codespaces, Supabase).
 TZ_NG = timezone(timedelta(hours=1))  # West Africa Time (WAT)
+TZ_NG_NAME = "WAT"   # Human-readable label for log timestamps.
+                     # Change this if TZ_NG ever changes — logs follow automatically.
+
 
 def now_ng() -> datetime:
     """Return current Nigerian time (Africa/Lagos, WAT = UTC+1)."""

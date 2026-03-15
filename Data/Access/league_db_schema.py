@@ -266,6 +266,17 @@ _SCHEMA_SQL = """
         UNIQUE(fixture_id, market_key)
     );
 
+    CREATE TABLE IF NOT EXISTS log_segments (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        path        TEXT NOT NULL UNIQUE,
+        category    TEXT NOT NULL,
+        started_at  TEXT NOT NULL,
+        closed_at   TEXT,
+        size_bytes  INTEGER DEFAULT 0,
+        uploaded    INTEGER DEFAULT 0,
+        remote_path TEXT
+    );
+
     -- Indexes for hot-path queries
     CREATE INDEX IF NOT EXISTS idx_schedules_league ON schedules(league_id);
     CREATE INDEX IF NOT EXISTS idx_schedules_date ON schedules(date);

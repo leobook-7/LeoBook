@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime as dt
 from Core.Utils.constants import DEFAULT_STAKE
-from Core.Utils.utils import Tee
+from Core.Utils.utils import RotatingSegmentLogger
 
 _current_dir = Path(__file__).parent.absolute()
 LOG_DIR = _current_dir.parent.parent / "Data" / "Logs"
@@ -62,43 +62,54 @@ def log_audit_state(chapter: str, action: str, details: str = ""):
         "status": "INFO"
     })
 
-def setup_terminal_logging(args):
-    """Sets up Tee logging to file with dynamic prefixes."""
-    # Set timeout
+def setup_terminal_logging(args) -> tuple:
+    """Set up rotating segment logging to Data/Logs/Terminal/.
+
+    Returns (logger_instance, original_stdout, original_stderr) so
+    Leo.py can restore streams and call logger.close_segment() on exit.
+    """
     if args:
         os.environ["PLAYWRIGHT_TIMEOUT"] = "3600000"
 
-    # Determine prefix
+    # Determine session prefix from CLI args
     prefix = "leo_session"
     if args:
-        if args.sync: prefix = "leo_sync_session"
-        elif args.recommend: prefix = "leo_recommend_session"
-        elif args.accuracy: prefix = "leo_accuracy_session"
-        elif args.search_dict: prefix = "leo_search_session"
-        elif args.review: prefix = "leo_review_session"
-        elif args.rule_engine: prefix = "leo_rule_engine_session"
-        elif args.streamer: prefix = "leo_streamer_session"
-        elif args.prologue: prefix = "leo_prologue_session"
-        elif args.chapter: prefix = f"leo_chapter{args.chapter}_session"
-        elif args.assets: prefix = "leo_assets_session"
-        elif args.logos: prefix = "leo_logos_session"
-        elif args.enrich_leagues: prefix = "leo_enrich_leagues_session"
-        elif args.upgrade_crests: prefix = "leo_upgrade_crests_session"
-        elif args.dry_run: prefix = "leo_dry_run_session"
-        elif args.train_rl: prefix = f"leo_train_rl_p{getattr(args, 'phase', 1)}_session"
+        if getattr(args, 'sync', False):             prefix = "leo_sync"
+        elif getattr(args, 'recommend', False):      prefix = "leo_recommend"
+        elif getattr(args, 'accuracy', False):       prefix = "leo_accuracy"
+        elif getattr(args, 'search_dict', False):    prefix = "leo_search"
+        elif getattr(args, 'review', False):         prefix = "leo_review"
+        elif getattr(args, 'rule_engine', False):    prefix = "leo_rule_engine"
+        elif getattr(args, 'streamer', False):       prefix = "leo_streamer"
+        elif getattr(args, 'prologue', False):       prefix = "leo_prologue"
+        elif getattr(args, 'chapter', None):         prefix = f"leo_chapter{args.chapter}"
+        elif getattr(args, 'assets', False):         prefix = "leo_assets"
+        elif getattr(args, 'logos', False):          prefix = "leo_logos"
+        elif getattr(args, 'enrich_leagues', False): prefix = "leo_enrich"
+        elif getattr(args, 'dry_run', False):        prefix = "leo_dry_run"
+        elif getattr(args, 'train_rl', False):       prefix = f"leo_train_rl_p{getattr(args, 'phase', 1)}"
+        elif getattr(args, 'data_quality', False):   prefix = "leo_data_quality"
 
-    TERMINAL_LOG_DIR = LOG_DIR / "Terminal"
-    TERMINAL_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = dt.now().strftime("%Y%m%d_%H%M%S")
-    log_file_path = TERMINAL_LOG_DIR / f"{prefix}_{timestamp}.log"
-
-    log_file = open(log_file_path, "w", encoding="utf-8")
     original_stdout = sys.stdout
     original_stderr = sys.stderr
-    sys.stdout = Tee(original_stdout, log_file)
-    sys.stderr = Tee(original_stderr, log_file)
-    
-    return log_file, original_stdout, original_stderr
+
+    logger = RotatingSegmentLogger(
+        original_stdout,
+        category="Terminal",
+        prefix=prefix,
+    )
+
+    sys.stdout = logger
+    sys.stderr = logger
+
+    # Print session header — first timestamped line in the segment
+    from Core.Utils.constants import now_ng
+    print(f"{'='*60}")
+    print(f"  LeoBook Session Start | prefix={prefix}")
+    print(f"  Started: {now_ng().strftime('%Y-%m-%d %H:%M:%S WAT')}")
+    print(f"{'='*60}")
+
+    return logger, original_stdout, original_stderr
 
 def parse_args():
     """

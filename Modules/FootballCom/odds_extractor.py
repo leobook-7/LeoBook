@@ -181,22 +181,26 @@ async def _recursive_scroll_markets(page: Page) -> int:
 async def _expand_all_markets(page: Page) -> int:
     """
     Expands every collapsed market container on the page.
-    Uses knowledge.json fb_match_page.market_toggle_icon + market_header.
-    Returns: count of containers expanded.
+
+    CRITICAL: Do NOT click .m-market-title or the container — they contain
+    <a> links that navigate away from the match page. Instead:
+      1. Try clicking ONLY the .toggle-all-icon SVG (safe, no <a>).
+      2. If no icon, use JS to force-expand by toggling display/aria.
     """
     toggle_icon_sel = _sel("market_toggle_icon") or ".m-market-title .toggle-all-icon"
-    market_header_sel = _sel("market_header") or ".market-title-bar, .m-market-title"
-    row_sel = ".m-table-row"
 
     expanded_count = 0
     containers = await page.locator("[data-market-id]").all()
 
     for container in containers:
         try:
-            # Detect collapsed: no visible rows OR aria-expanded=false
+            # Detect collapsed: hidden table or no visible rows
             is_collapsed = await container.evaluate("""(el) => {
-                const hdr = el.querySelector('[aria-expanded="false"], .collapsed, [class*="collapsed"]');
-                if (hdr) return true;
+                const table = el.querySelector('.m-table.market-content, .market-content');
+                if (table) {
+                    const style = window.getComputedStyle(table);
+                    if (style.display === 'none' || style.maxHeight === '0px') return true;
+                }
                 const rows = el.querySelectorAll('.m-table-row');
                 if (rows.length === 0) return true;
                 const first = rows[0];
@@ -208,36 +212,34 @@ async def _expand_all_markets(page: Page) -> int:
             if not is_collapsed:
                 continue
 
-            # Try clicking the toggle icon first, then the header
+            # Strategy 1: Click ONLY the toggle icon (SVG, safe — no navigation)
             clicked = False
-            for sel in [toggle_icon_sel, market_header_sel, "[data-toggle]", "[aria-expanded]"]:
-                try:
-                    toggle = container.locator(sel).first
-                    if await toggle.count() > 0:
-                        await toggle.click(force=True)
-                        clicked = True
-                        break
-                except Exception:
-                    continue
-
-            if not clicked:
-                # Last resort: click the container itself
-                try:
-                    await container.click(force=True)
-                except Exception:
-                    await container.evaluate("el => el.click()")
-
-            # Wait for rows to appear
-            market_id = await container.get_attribute("data-market-id") or ""
             try:
-                await page.wait_for_selector(
-                    f"[data-market-id='{market_id}'] {row_sel}",
-                    state="visible", timeout=1500,
-                )
+                toggle = container.locator(toggle_icon_sel).first
+                if await toggle.count() > 0:
+                    await toggle.click(force=True)
+                    clicked = True
             except Exception:
                 pass
 
-            await asyncio.sleep(0.15)
+            # Strategy 2: JS-only expand (never triggers navigation)
+            if not clicked:
+                await container.evaluate("""(el) => {
+                    // Force-show the market content table
+                    const table = el.querySelector('.m-table.market-content, .market-content');
+                    if (table) {
+                        table.style.display = '';
+                        table.style.maxHeight = 'none';
+                        table.style.overflow = 'visible';
+                    }
+                    // Flip aria-expanded
+                    const hdr = el.querySelector('[aria-expanded="false"]');
+                    if (hdr) hdr.setAttribute('aria-expanded', 'true');
+                    // Remove .collapsed class
+                    el.querySelectorAll('.collapsed').forEach(c => c.classList.remove('collapsed'));
+                }""")
+
+            await asyncio.sleep(0.2)
             expanded_count += 1
 
         except Exception:
@@ -406,21 +408,40 @@ class OddsExtractor:
                 batch: List[Dict] = []
                 extracted_at = now_ng().isoformat()
 
-                for row in outcome_rows:
-                    try:
-                        name_el = await row.query_selector(
-                            "span.un-text-rem-\\[12px\\], "
-                            "span[class*='un-text-rem'][class*='12']"
-                        )
-                        odds_el = await row.query_selector(
-                            "span.un-text-rem-\\[14px\\].un-font-bold, "
-                            "span.un-font-bold[class*='un-text-rem']"
-                        )
-                        if not name_el or not odds_el:
-                            continue
+                # Use JS to extract ALL outcomes from this container at once
+                # (avoids Python↔browser round-trips and escaped-selector issues)
+                js_outcomes = await container.evaluate(r"""(el) => {
+                    const results = [];
+                    const rows = el.querySelectorAll('.m-table-row');
+                    rows.forEach(row => {
+                        const spans = row.querySelectorAll('span');
+                        if (spans.length < 2) return;
+                        // Find label (smaller font) and odds (bold) spans
+                        let label = null, odds = null;
+                        for (const sp of spans) {
+                            const cls = sp.className || '';
+                            const txt = sp.innerText.trim();
+                            if (!txt) continue;
+                            if (cls.includes('un-font-bold') && /^\d/.test(txt)) {
+                                odds = txt;
+                            } else if (!label && txt.length > 0 && !/^\d+\.\d+$/.test(txt)) {
+                                label = txt;
+                            }
+                        }
+                        // Fallback: first span = label, last span = odds
+                        if (!label && spans.length >= 2) label = spans[0].innerText.trim();
+                        if (!odds && spans.length >= 2) odds = spans[spans.length - 1].innerText.trim();
+                        if (label && odds) results.push({name: label, odds: odds});
+                    });
+                    return results;
+                }""")
 
-                        name_text = (await name_el.inner_text()).strip()
-                        odds_text = (await odds_el.inner_text()).strip()
+                for item in js_outcomes:
+                    try:
+                        name_text = item.get("name", "").strip()
+                        odds_text = item.get("odds", "").strip()
+                        if not name_text or not odds_text:
+                            continue
 
                         try:
                             odds_val = float(odds_text.replace(",", "."))

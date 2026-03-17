@@ -256,7 +256,7 @@ class GrokMatcher:
         )
 
         # Gemini only — each model isolated, one 400/quota never kills others
-        model_chain = ['gemini-2.0-flash-lite', 'gemini-1.5-flash-8b', 'gemini-2.0-flash']
+        model_chain = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3-flash', 'gemini-3.1-flash-lite']
         api_key = os.environ.get('GEMINI_API_KEY', '')
         if not api_key:
             return None, 0.0

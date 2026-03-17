@@ -311,10 +311,14 @@ async def _extract_matches_from_container(container, match_card_sel, home_team_s
                         cardDate = targetDate;
                     }
                     const rawTime = timeEl ? timeEl.innerText.trim() : null;
+                    // Clean time: strip date prefix like "21 Mar, 10:00" → "10:00"
+                    const cleanTime = rawTime && rawTime.includes(',')
+                        ? rawTime.split(',').pop().trim()
+                        : rawTime;
                     results.push({
                         home: homeEl.innerText.trim(),
                         away: awayEl.innerText.trim(),
-                        time: rawTime,
+                        time: cleanTime,
                         league: leagueText,
                         url: linkEl ? linkEl.href : "",
                         date: cardDate
@@ -364,10 +368,14 @@ async def _extract_matches_from_container(container, match_card_sel, home_team_s
                         cardDate = targetDate;
                     }
                     const rawTime = timeEl ? timeEl.innerText.trim() : null;
+                    // Clean time: strip date prefix like "21 Mar, 10:00" → "10:00"
+                    const cleanTime = rawTime && rawTime.includes(',')
+                        ? rawTime.split(',').pop().trim()
+                        : rawTime;
                     results.push({
                         home: homeEl.innerText.trim(),
                         away: awayEl.innerText.trim(),
-                        time: rawTime,
+                        time: cleanTime,
                         league: leagueText,
                         url: linkEl ? linkEl.href : "",
                         date: cardDate

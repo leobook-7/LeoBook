@@ -561,6 +561,7 @@ async def run_odds_harvesting(playwright: Playwright):
                 )
 
                 if match_row:
+                    match_row["fixture_id"] = fs_fix.get("fixture_id", "")
                     match_row["home_id"] = fs_fix.get("home_team_id") or fs_fix.get("home_id")
                     match_row["away_id"] = fs_fix.get("away_team_id") or fs_fix.get("away_id")
                     match_row["resolution_method"] = method

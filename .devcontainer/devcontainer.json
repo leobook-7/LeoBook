@@ -1,38 +1,43 @@
 {
-    "name": "LeoBook Dev Environment",
-    "image": "mcr.microsoft.com/devcontainers/python:3.13",
-    "features": {
-        "ghcr.io/devcontainers/features/node:1": {
-            "version": "20"
-        },
-        "ghcr.io/devcontainers/features/java:1": {
-            "version": "17"
-        }
+  "name": "LeoBook + Android SDK 36",
+  "image": "://mcr.microsoft.com",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
     },
-    "postCreateCommand": "bash .devcontainer/setup.sh",
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "ms-python.python",
-                "ms-python.vscode-pylance",
-                "ms-playwright.playwright",
-                "Dart-Code.dart-code",
-                "Dart-Code.flutter"
-            ],
-            "settings": {
-                "python.defaultInterpreterPath": "/usr/local/bin/python",
-                "python.analysis.typeCheckingMode": "basic",
-                "dart.flutterSdkPath": "~/flutter"
-            }
-        }
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "17",
+      "jdkDistro": "ms"
     },
-    "forwardPorts": [
-        8000, 8080, 3000, 5000
-    ],
-    "remoteEnv": {
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONUNBUFFERED": "1",
-        "ANDROID_HOME": "/home/vscode/android-sdk",
-        "CHROME_EXECUTABLE": "/usr/bin/chromium"
+    "ghcr.io/devcontainers/features/android-sdk:1": {
+      "sdkVersion": "latest"
     }
+  },
+  "remoteUser": "vscode",
+  "remoteEnv": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUNBUFFERED": "1",
+    "ANDROID_HOME": "/home/vscode/android-sdk",
+    "CHROME_EXECUTABLE": "/usr/bin/chromium"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-playwright.playwright",
+        "Dart-Code.dart-code",
+        "Dart-Code.flutter",
+        "vscjava.vscode-java-pack",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.typeCheckingMode": "basic",
+        "dart.flutterSdkPath": "/home/vscode/flutter"
+      }
+    }
+  },
+  "forwardPorts": [8000, 8080, 3000, 5000],
+  "postCreateCommand": "bash .devcontainer/setup.sh"
 }

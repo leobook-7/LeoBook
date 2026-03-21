@@ -26,7 +26,7 @@ class _AccountScreenState extends State<AccountScreen> {
 
     return Scaffold(
       backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+          isDark ? AppColors.neutral900 : AppColors.neutral700,
       body: Column(
         children: [
           MainTopBar(

@@ -99,7 +99,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundDark,
+      backgroundColor: AppColors.neutral900,
       body: Column(
         children: [
           Expanded(
@@ -195,7 +195,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
           colors: [
             Color(0xFF0F172A),
             Color(0xFF1E293B),
-            AppColors.backgroundDark,
+            AppColors.neutral900,
           ],
           stops: [0.0, 0.6, 1.0],
         ),
@@ -379,7 +379,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardDark,
+        color: AppColors.neutral800,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
         boxShadow: [
@@ -714,7 +714,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.cardDark,
+          color: AppColors.neutral800,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white10),
         ),
@@ -734,7 +734,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardDark,
+        color: AppColors.neutral800,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
@@ -950,7 +950,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardDark,
+        color: AppColors.neutral800,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),
@@ -1064,7 +1064,7 @@ class _MatchDetailsScreenState extends State<MatchDetailsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardDark,
+        color: AppColors.neutral800,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white10),
       ),

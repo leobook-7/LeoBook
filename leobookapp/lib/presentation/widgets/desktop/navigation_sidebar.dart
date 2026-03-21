@@ -38,7 +38,7 @@ class NavigationSideBar extends StatelessWidget {
             child: Container(
               height: double.infinity,
               decoration: BoxDecoration(
-                color: AppColors.backgroundDark.withValues(alpha: 0.35),
+                color: AppColors.neutral900.withValues(alpha: 0.35),
                 border: Border(
                   right: BorderSide(
                     color: LiquidGlassTheme.glassBorderDark,
@@ -188,7 +188,7 @@ class NavigationSideBar extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.all(Responsive.dp(context, 8)),
         decoration: BoxDecoration(
-          color: AppColors.backgroundDark.withValues(alpha: 0.5),
+          color: AppColors.neutral900.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(Responsive.dp(context, 10)),
           border:
               Border.all(color: LiquidGlassTheme.glassBorderDark, width: 0.5),
@@ -202,7 +202,7 @@ class NavigationSideBar extends StatelessWidget {
               style: TextStyle(
                 fontSize: Responsive.dp(context, 7),
                 fontWeight: FontWeight.w900,
-                color: AppColors.textGrey,
+                color: AppColors.textTertiary,
                 letterSpacing: 1.0,
               ),
             ),
@@ -218,7 +218,7 @@ class NavigationSideBar extends StatelessWidget {
                     style: TextStyle(
                       fontSize: Responsive.dp(context, 9),
                       fontWeight: FontWeight.bold,
-                      color: AppColors.successGreen,
+                      color: AppColors.success,
                     ),
                   ),
                   SizedBox(width: Responsive.dp(context, 4)),

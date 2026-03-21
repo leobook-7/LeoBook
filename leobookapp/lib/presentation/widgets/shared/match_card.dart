@@ -538,7 +538,7 @@ class _MatchCardState extends State<MatchCard> {
                 : BoxDecoration(
                     color: isDark
                         ? Colors.white.withValues(alpha: 0.05)
-                        : AppColors.backgroundLight,
+                        : AppColors.neutral700,
                     shape: BoxShape.circle,
                   ),
             child: ClipOval(

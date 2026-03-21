@@ -15,7 +15,7 @@ class GlobalStatsFooter extends StatelessWidget {
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 32),
       decoration: const BoxDecoration(
-        color: AppColors.desktopSidebarBg,
+        color: AppColors.neutral700,
         border: Border(top: BorderSide(color: Colors.white10)),
       ),
       child: Row(
@@ -47,7 +47,7 @@ class GlobalStatsFooter extends StatelessWidget {
           style: const TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w900,
-            color: AppColors.textGrey,
+            color: AppColors.textTertiary,
             letterSpacing: 1,
           ),
         ),

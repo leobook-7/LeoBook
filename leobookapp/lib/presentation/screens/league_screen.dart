@@ -107,14 +107,14 @@ class _LeagueScreenState extends State<LeagueScreen>
 
     return Scaffold(
       backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+          isDark ? AppColors.neutral900 : AppColors.neutral700,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) {
           return [
             SliverAppBar(
               backgroundColor: isDark
-                  ? AppColors.backgroundDark.withValues(alpha: 0.9)
-                  : AppColors.backgroundLight.withValues(alpha: 0.9),
+                  ? AppColors.neutral900.withValues(alpha: 0.9)
+                  : AppColors.neutral700.withValues(alpha: 0.9),
               surfaceTintColor: Colors.transparent,
               pinned: true,
               floating: true,
@@ -137,7 +137,7 @@ class _LeagueScreenState extends State<LeagueScreen>
                     height: 32,
                     margin: const EdgeInsets.only(right: 10),
                     decoration: BoxDecoration(
-                      color: isDark ? AppColors.cardDark : Colors.white,
+                      color: isDark ? AppColors.neutral800 : Colors.white,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: isDark

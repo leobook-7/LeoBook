@@ -94,7 +94,7 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isSaving ? null : _save,
-        backgroundColor: AppColors.successGreen,
+        backgroundColor: AppColors.success,
         foregroundColor: Colors.white,
         icon: _isSaving
             ? const SizedBox(
@@ -181,7 +181,7 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textLight,
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 12),
@@ -223,7 +223,7 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textLight,
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 12),
@@ -312,7 +312,7 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textLight,
+                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 8),
@@ -341,7 +341,7 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textLight,
+                color: AppColors.textPrimary,
               ),
             ),
           ],
@@ -351,10 +351,10 @@ class _RuleEditorScreenState extends State<RuleEditorScreen> {
             trackHeight: 3,
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-            activeTrackColor: AppColors.successGreen,
+            activeTrackColor: AppColors.success,
             inactiveTrackColor:
-                AppColors.glassBorderDark.withValues(alpha: 0.2),
-            thumbColor: AppColors.successGreen,
+                AppColors.glassBorder.withValues(alpha: 0.2),
+            thumbColor: AppColors.success,
           ),
           child: Slider(
             value: def.value,

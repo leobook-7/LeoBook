@@ -351,7 +351,7 @@ class _PinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.backgroundDark.withValues(alpha: 0.35),
+            color: AppColors.neutral900.withValues(alpha: 0.35),
           ),
           child: child,
         ),

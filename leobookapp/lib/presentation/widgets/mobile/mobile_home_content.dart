@@ -102,8 +102,8 @@ class _MobileHomeContentState extends State<MobileHomeContent>
                     child: Container(
                       decoration: BoxDecoration(
                         color: (isDark
-                                ? AppColors.backgroundDark
-                                : AppColors.backgroundLight)
+                                ? AppColors.neutral900
+                                : AppColors.neutral700)
                             .withValues(alpha: 0.35),
                         border: Border(
                           bottom: BorderSide(
@@ -383,8 +383,8 @@ class _StickyTabBarDelegate extends SliverPersistentHeaderDelegate {
                 height: 50.0,
                 decoration: BoxDecoration(
                   color: (isDark
-                          ? AppColors.backgroundDark
-                          : AppColors.backgroundLight)
+                          ? AppColors.neutral900
+                          : AppColors.neutral700)
                       .withValues(alpha: 0.5),
                   borderRadius: BorderRadius.vertical(
                     top: Radius.circular(Responsive.sp(context, 16)),

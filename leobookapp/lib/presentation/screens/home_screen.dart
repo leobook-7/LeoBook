@@ -22,7 +22,7 @@ class HomeScreen extends StatelessWidget {
     final isDesktop = Responsive.isDesktop(context);
 
     return Scaffold(
-      backgroundColor: isDesktop ? AppColors.backgroundDark : null,
+      backgroundColor: isDesktop ? AppColors.neutral900 : null,
       body: BlocBuilder<HomeCubit, HomeState>(
         builder: (context, state) {
           if (state is HomeLoading) {

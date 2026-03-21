@@ -68,7 +68,7 @@ class LeagueStatsTab extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.cardDark : Colors.white,
+            color: isDark ? AppColors.neutral800 : Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isDark
@@ -136,7 +136,7 @@ class LeagueStatsTab extends StatelessWidget {
                 "OVER 2.5 %",
                 "64%",
                 0.64,
-                AppColors.accentYellow,
+                AppColors.warning,
                 isDark,
               ),
             ),
@@ -202,7 +202,7 @@ class LeagueStatsTab extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
+        color: isDark ? AppColors.neutral800 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
@@ -251,10 +251,10 @@ class LeagueStatsTab extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.backgroundDark,
+        color: AppColors.neutral900,
         borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
-          colors: [AppColors.backgroundDark, Color(0xFF1E293B)],
+          colors: [AppColors.neutral900, Color(0xFF313038)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -262,7 +262,7 @@ class LeagueStatsTab extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildCardStatItem("4.12", "AVG YELLOWS", AppColors.accentYellow),
+          _buildCardStatItem("4.12", "AVG YELLOWS", AppColors.warning),
           Container(
             width: 1,
             height: 40,
@@ -334,7 +334,7 @@ class LeagueStatsTab extends StatelessWidget {
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
+        color: isDark ? AppColors.neutral800 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark

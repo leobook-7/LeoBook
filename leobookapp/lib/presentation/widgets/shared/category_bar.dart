@@ -187,8 +187,8 @@ class _CategoryChipState extends State<_CategoryChip> {
               color: widget.isSelected
                   ? AppColors.primary
                   : (_isHovered
-                      ? AppColors.desktopSearchFill.withValues(alpha: 0.8)
-                      : AppColors.desktopSearchFill),
+                      ? AppColors.neutral700.withValues(alpha: 0.8)
+                      : AppColors.neutral700),
               borderRadius: BorderRadius.circular(Responsive.sp(context, 8)),
               border: widget.isSelected
                   ? null

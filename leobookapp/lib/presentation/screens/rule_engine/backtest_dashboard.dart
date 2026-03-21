@@ -100,7 +100,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
+      backgroundColor: isDark ? AppColors.neutral900 : Colors.white,
       // Removed standard AppBar, using SliverAppBar below
 
       body: _isLoading
@@ -211,7 +211,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
       expandedHeight: 120.0,
       floating: false,
       pinned: true,
-      backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
+      backgroundColor: isDark ? AppColors.neutral900 : Colors.white,
       surfaceTintColor: Colors.transparent,
       actions: [
         IconButton(
@@ -265,10 +265,10 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.15),
-                    AppColors.backgroundDark,
-                  ],
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.15),
+                      AppColors.neutral900,
+                    ],
                 ),
               ),
             ),
@@ -379,7 +379,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
           style: TextStyle(
             fontSize: isPrimary ? 32 : 24,
             fontWeight: FontWeight.w900,
-            color: isPrimary ? AppColors.successGreen : Colors.white,
+            color: isPrimary ? AppColors.success : Colors.white,
             fontStyle: FontStyle.italic,
           ),
         ),
@@ -421,11 +421,11 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.backgroundDark.withValues(alpha: 0.5),
+            color: AppColors.neutral900.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isWin
-                  ? AppColors.successGreen.withValues(alpha: 0.2)
+                  ? AppColors.success.withValues(alpha: 0.2)
                   : Colors.white10,
             ),
           ),
@@ -446,7 +446,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
                   if (isWin)
                     const Icon(
                       Icons.check_circle_rounded,
-                      color: AppColors.successGreen,
+                      color: AppColors.success,
                       size: 14,
                     ),
                 ],
@@ -510,7 +510,7 @@ class _BacktestDashboardState extends State<BacktestDashboard> {
               style: const TextStyle(fontSize: 12),
             ),
             trailing: isWin
-                ? const Icon(Icons.check_circle, color: AppColors.successGreen)
+                ? const Icon(Icons.check_circle, color: AppColors.success)
                 : const Icon(Icons.cancel, color: AppColors.liveRed),
           ),
         );

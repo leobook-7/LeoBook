@@ -74,7 +74,7 @@ class _LeoDatePickerState extends State<LeoDatePicker> {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: AppColors.desktopSidebarBg,
+            color: AppColors.neutral700,
             borderRadius: BorderRadius.circular(28),
             border: Border.all(color: Colors.white10),
             boxShadow: [

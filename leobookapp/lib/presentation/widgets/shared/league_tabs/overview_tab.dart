@@ -132,7 +132,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
+        color: isDark ? AppColors.neutral800 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
@@ -325,7 +325,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: gd > 0
-                  ? AppColors.successGreen
+                  ? AppColors.success
                   : (gd < 0 ? AppColors.liveRed : AppColors.textGrey),
             ),
           ),
@@ -375,7 +375,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
               ? m.awayTeam.substring(0, 3).toUpperCase()
               : m.awayTeam.toUpperCase();
           final color =
-              index.isEven ? AppColors.primary : AppColors.accentYellow;
+              index.isEven ? AppColors.primary : AppColors.warning;
           return _buildPredictionCard(
             context,
             homeCode,
@@ -407,7 +407,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
       width: 260,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
+        color: isDark ? AppColors.neutral800 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark
@@ -484,7 +484,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
                             style: GoogleFonts.lexend(
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
-                              color: color == AppColors.accentYellow
+                              color: color == AppColors.accentSecondary
                                   ? Colors.orange[800]
                                   : color,
                             ),
@@ -516,7 +516,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
                               style: GoogleFonts.lexend(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: color == AppColors.accentYellow
+                                color: color == AppColors.accentSecondary
                                     ? Colors.black
                                     : Colors.white,
                               ),
@@ -595,7 +595,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
             "AVG GOALS",
             "2.84",
             0.70,
-            AppColors.accentYellow,
+            AppColors.warning,
             isDark,
           ),
         ),
@@ -614,7 +614,7 @@ class _LeagueOverviewTabState extends State<LeagueOverviewTab> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
+        color: isDark ? AppColors.neutral800 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark

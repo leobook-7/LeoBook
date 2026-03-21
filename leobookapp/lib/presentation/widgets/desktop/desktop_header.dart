@@ -33,7 +33,7 @@ class DesktopHeader extends StatelessWidget {
           height: 80,
           padding: const EdgeInsets.symmetric(horizontal: 32),
           decoration: BoxDecoration(
-            color: AppColors.backgroundDark.withValues(alpha: 0.35),
+            color: AppColors.neutral900.withValues(alpha: 0.35),
             border: const Border(bottom: BorderSide(color: Colors.white10)),
           ),
           child: Row(
@@ -88,7 +88,7 @@ class DesktopHeader extends StatelessWidget {
                             size: 22,
                           ),
                           filled: true,
-                          fillColor: AppColors.desktopSearchFill,
+                          fillColor: AppColors.neutral700,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide: BorderSide.none,
@@ -177,7 +177,7 @@ class DesktopHeader extends StatelessWidget {
       width: 44,
       height: 44,
       decoration: BoxDecoration(
-        color: AppColors.desktopSearchFill,
+        color: AppColors.neutral700,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Center(child: Icon(icon, color: Colors.white54, size: 22)),

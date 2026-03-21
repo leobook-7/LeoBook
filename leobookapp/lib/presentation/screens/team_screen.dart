@@ -150,7 +150,7 @@ class _TeamScreenState extends State<TeamScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.backgroundDark,
+      backgroundColor: AppColors.neutral900,
       body: _isLoading
           ? const LeoLoadingIndicator()
           : CustomScrollView(
@@ -185,7 +185,7 @@ class _TeamScreenState extends State<TeamScreen> {
       expandedHeight: 250.0,
       floating: false,
       pinned: true,
-      backgroundColor: AppColors.backgroundDark.withValues(alpha: 0.8),
+      backgroundColor: AppColors.neutral900.withValues(alpha: 0.8),
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
           decoration: BoxDecoration(
@@ -194,7 +194,7 @@ class _TeamScreenState extends State<TeamScreen> {
               end: Alignment.bottomCenter,
               colors: [
                 AppColors.primary.withValues(alpha: 0.15),
-                AppColors.backgroundDark,
+                AppColors.neutral900,
               ],
             ),
           ),
@@ -208,7 +208,7 @@ class _TeamScreenState extends State<TeamScreen> {
                     width: 80,
                     height: 80,
                     decoration: BoxDecoration(
-                      color: AppColors.cardDark,
+                      color: AppColors.neutral800,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white12, width: 4),
                       boxShadow: [
@@ -245,7 +245,7 @@ class _TeamScreenState extends State<TeamScreen> {
                     child: Container(
                       padding: const EdgeInsets.all(2),
                       decoration: const BoxDecoration(
-                        color: AppColors.successGreen,
+                        color: AppColors.success,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -350,7 +350,7 @@ class _TeamScreenState extends State<TeamScreen> {
   Widget _buildStatCard(String label, String value) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.cardDark.withValues(alpha: 0.6),
+        color: AppColors.neutral800.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white12),
       ),
@@ -372,7 +372,7 @@ class _TeamScreenState extends State<TeamScreen> {
             style: GoogleFonts.lexend(
               fontSize: 18,
               fontWeight: FontWeight.w900,
-              color: AppColors.accentBlue,
+              color: AppColors.accentPrimary,
             ),
           ),
         ],
@@ -399,7 +399,7 @@ class _TeamScreenState extends State<TeamScreen> {
           children: _form.map((result) {
             Color color;
             if (result == 'W') {
-              color = AppColors.successGreen;
+              color = AppColors.success;
             } else if (result == 'L') {
               color = AppColors.liveRed;
             } else {
@@ -472,7 +472,7 @@ class _TeamScreenState extends State<TeamScreen> {
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: AppColors.cardDark,
+            color: AppColors.neutral800,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
             boxShadow: [
@@ -547,7 +547,7 @@ class _TeamScreenState extends State<TeamScreen> {
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.backgroundDark.withValues(
+                              color: AppColors.neutral900.withValues(
                                 alpha: 0.5,
                               ),
                               borderRadius: BorderRadius.circular(12),
@@ -626,7 +626,7 @@ class _TeamScreenState extends State<TeamScreen> {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: AppColors.backgroundDark,
+            color: AppColors.neutral900,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.white10),
           ),

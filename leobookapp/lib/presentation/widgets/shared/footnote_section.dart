@@ -29,7 +29,7 @@ class FootnoteSection extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color:
-                (isDark ? AppColors.backgroundDark : AppColors.backgroundLight)
+                (isDark ? AppColors.neutral900 : AppColors.neutral700)
                     .withValues(alpha: 0.5),
             border: Border(
               top: BorderSide(

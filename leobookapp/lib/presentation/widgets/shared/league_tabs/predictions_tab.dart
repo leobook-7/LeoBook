@@ -99,7 +99,7 @@ class LeaguePredictionsTab extends StatelessWidget {
             "BTTS - Yes",
             "1.62",
             "Value Tip",
-            AppColors.accentYellow,
+            AppColors.warning,
             isDark,
           ),
         ],
@@ -111,7 +111,7 @@ class LeaguePredictionsTab extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppColors.primary, AppColors.aiPurple],
+          colors: [AppColors.primary, AppColors.primaryLight],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -327,7 +327,7 @@ class LeaguePredictionsTab extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.cardDark : Colors.white,
+        color: isDark ? AppColors.neutral800 : Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isDark

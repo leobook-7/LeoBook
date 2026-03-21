@@ -110,7 +110,7 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
         onPressed: () => _openEditor(),
         icon: const Icon(Icons.add),
         label: const Text('New Engine'),
-        backgroundColor: AppColors.successGreen,
+        backgroundColor: AppColors.success,
       ),
       body: _loading
           ? const LeoLoadingIndicator()
@@ -158,13 +158,13 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
                       ),
                       margin: const EdgeInsets.only(right: 8),
                       decoration: BoxDecoration(
-                        color: AppColors.successGreen.withValues(alpha: 0.2),
+                        color: AppColors.success.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         '⭐ DEFAULT',
                         style: TextStyle(
-                          color: AppColors.successGreen,
+                          color: AppColors.success,
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                         ),
@@ -176,7 +176,7 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textLight,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
@@ -245,7 +245,7 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
                   'Last backtested: ${acc.backtestPeriod}',
                   style: TextStyle(
                     fontSize: 11,
-                    color: AppColors.textHint,
+                    color: AppColors.textTertiary,
                   ),
                 ),
               ],
@@ -263,13 +263,13 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 14, color: AppColors.textHint),
+              Icon(icon, size: 14, color: AppColors.textTertiary),
               const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 10,
-                  color: AppColors.textHint,
+                  color: AppColors.textTertiary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -281,7 +281,7 @@ class _RuleEngineListScreenState extends State<RuleEngineListScreen> {
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: AppColors.textLight,
+              color: AppColors.textPrimary,
             ),
           ),
         ],

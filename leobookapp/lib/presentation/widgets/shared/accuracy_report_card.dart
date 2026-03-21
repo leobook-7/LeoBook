@@ -47,7 +47,7 @@ class _AccuracyReportCardState extends State<AccuracyReportCard> {
     if (finished.isNotEmpty) {
       if (totalAccuracy >= 80) {
         perfLabel = "HIGH PERFORMANCE";
-        perfColor = AppColors.successGreen;
+        perfColor = AppColors.success;
         trendIcon = Icons.trending_up_rounded;
       } else if (totalAccuracy >= 60) {
         perfLabel = "AVERAGE";
@@ -69,7 +69,7 @@ class _AccuracyReportCardState extends State<AccuracyReportCard> {
             _SectionHeader(
               title: "ACCURACY REPORT",
               icon: Icons.check_circle_rounded,
-              color: AppColors.successGreen,
+              color: AppColors.success,
             ),
             Text(
               "${finished.length} MATCHES ANALYZED",
@@ -86,7 +86,7 @@ class _AccuracyReportCardState extends State<AccuracyReportCard> {
         Container(
           padding: EdgeInsets.all(Responsive.sp(context, 12)),
           decoration: BoxDecoration(
-            color: AppColors.desktopSearchFill.withValues(alpha: 0.5),
+            color: AppColors.neutral700.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(Responsive.sp(context, 14)),
             border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
           ),
@@ -204,7 +204,7 @@ class _AccuracyReportCardState extends State<AccuracyReportCard> {
     final colors = [
       AppColors.primary,
       AppColors.warning,
-      AppColors.successGreen,
+      AppColors.success,
       const Color(0xFF8B5CF6), // purple
       const Color(0xFFEC4899), // pink
       const Color(0xFF06B6D4), // cyan
@@ -374,7 +374,7 @@ class _ExpandedLeagueList extends StatelessWidget {
               vertical: Responsive.sp(context, 6),
             ),
             decoration: BoxDecoration(
-              color: AppColors.desktopHeaderBg,
+              color: AppColors.neutral700,
               borderRadius: BorderRadius.circular(Responsive.sp(context, 8)),
               border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
             ),
@@ -596,7 +596,7 @@ class _LeagueAccuracy extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(Responsive.sp(context, 8)),
       decoration: BoxDecoration(
-        color: AppColors.desktopHeaderBg,
+        color: AppColors.neutral700,
         borderRadius: BorderRadius.circular(Responsive.sp(context, 10)),
         border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),

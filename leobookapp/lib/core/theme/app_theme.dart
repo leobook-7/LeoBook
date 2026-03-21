@@ -33,29 +33,29 @@ class AppTheme {
         titleMedium: GoogleFonts.lexend(
           fontSize: 13,
           fontWeight: FontWeight.w600,
-          color: AppColors.textLight,
+          color: AppColors.textPrimary,
         ),
         bodyLarge: GoogleFonts.lexend(
           fontSize: 13,
           fontWeight: FontWeight.w400,
-          color: AppColors.textLight,
+          color: AppColors.textPrimary,
           height: 1.5,
         ),
         bodyMedium: GoogleFonts.lexend(
           fontSize: 11,
           fontWeight: FontWeight.w400,
-          color: AppColors.textGrey,
+          color: AppColors.textTertiary,
           height: 1.5,
         ),
         bodySmall: GoogleFonts.lexend(
           fontSize: 10,
           fontWeight: FontWeight.w400,
-          color: AppColors.textGrey,
+          color: AppColors.textTertiary,
         ),
         labelLarge: GoogleFonts.lexend(
           fontSize: 9,
           fontWeight: FontWeight.w700,
-          color: AppColors.textGrey,
+          color: AppColors.textTertiary,
           letterSpacing: 0.8,
         ),
       ),
@@ -63,15 +63,15 @@ class AppTheme {
       colorScheme: const ColorScheme.dark(
         primary: AppColors.primary,
         surface: AppColors.surfaceDark,
-        onSurface: AppColors.textLight,
+        onSurface: AppColors.textPrimary,
         error: AppColors.liveRed,
-        secondary: AppColors.successGreen,
+        secondary: AppColors.success,
         surfaceContainerHighest: AppColors.surfaceDark,
       ),
 
       // Glass-aware AppBar
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.backgroundDark.withValues(alpha: 0.8),
+        backgroundColor: AppColors.neutral900.withValues(alpha: 0.8),
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
@@ -96,7 +96,7 @@ class AppTheme {
       // Input Decoration
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: AppColors.desktopSearchFill,
+        fillColor: AppColors.neutral700,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
@@ -117,7 +117,7 @@ class AppTheme {
 
       // Animated snackbar
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppColors.cardDark,
+        backgroundColor: AppColors.neutral800,
         contentTextStyle: GoogleFonts.lexend(color: Colors.white, fontSize: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         behavior: SnackBarBehavior.floating,

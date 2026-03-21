@@ -50,7 +50,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Scaffold(
       backgroundColor:
-          isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+          isDark ? AppColors.neutral900 : AppColors.neutral700,
       body: SafeArea(
         child: Column(
           children: [
@@ -616,8 +616,8 @@ class _SearchScreenState extends State<SearchScreen> {
               height: Responsive.sp(context, 32),
               decoration: BoxDecoration(
                 color: isDark
-                    ? AppColors.accentYellow.withValues(alpha: 0.12)
-                    : AppColors.accentYellow.withValues(alpha: 0.1),
+                    ? AppColors.warning.withValues(alpha: 0.12)
+                    : AppColors.warning.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(Responsive.sp(context, 8)),
               ),
               child: crest.isNotEmpty && crest.startsWith('http')
@@ -630,14 +630,14 @@ class _SearchScreenState extends State<SearchScreen> {
                         errorBuilder: (_, __, ___) => Icon(
                           Icons.emoji_events_outlined,
                           size: Responsive.sp(context, 16),
-                          color: AppColors.accentYellow,
+                          color: AppColors.warning,
                         ),
                       ),
                     )
                   : Icon(
                       Icons.emoji_events_outlined,
                       size: Responsive.sp(context, 16),
-                      color: AppColors.accentYellow,
+                      color: AppColors.warning,
                     ),
             ),
             SizedBox(width: Responsive.sp(context, 10)),

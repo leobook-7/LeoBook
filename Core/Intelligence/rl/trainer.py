@@ -682,7 +682,8 @@ class RLTrainer(TrainerPhasesMixin, TrainerIOMixin):
                     s.away_team_id, 
                     COALESCE(NULLIF(s.away_team_name, ''), t2.name) as a_name,
                     s.home_score, s.away_score,
-                    s.season
+                    s.season,
+                    s.date, s.time, s.country_league, s.match_link
                 FROM schedules s
                 LEFT JOIN teams t1 ON s.home_team_id = t1.team_id
                 LEFT JOIN teams t2 ON s.away_team_id = t2.team_id
@@ -700,7 +701,7 @@ class RLTrainer(TrainerPhasesMixin, TrainerIOMixin):
             prepped_data = []
 
             def _prepare_fixture(fix):
-                fixture_id, league_id, home_tid, h_name, away_tid, a_name, h_score, a_score, season = fix
+                fixture_id, league_id, home_tid, h_name, away_tid, a_name, h_score, a_score, season, f_date, f_time, f_cl, f_link = fix
                 # Use a fresh, thread-unique connection to avoid shared-handle closing race conditions
                 t_conn = get_connection()
                 try:
@@ -741,7 +742,7 @@ class RLTrainer(TrainerPhasesMixin, TrainerIOMixin):
                 expert_probs = data["expert_probs"]
                 xg_fair_odds = data["xg_fair_odds"]
 
-                fixture_id, league_id, home_tid, h_name, away_tid, a_name, h_score, a_score, season = fix
+                fixture_id, league_id, home_tid, h_name, away_tid, a_name, h_score, a_score, season, f_date, f_time, f_cl, f_link = fix
 
                 if active_phase == 1:
                     # Phase 1: pure imitation, no outcome needed
@@ -831,6 +832,60 @@ class RLTrainer(TrainerPhasesMixin, TrainerIOMixin):
                     'confidence': 'High' if metrics.get('max_prob', 0) > 0.6 else 'Medium' if metrics.get('max_prob', 0) > 0.3 else 'Low',
                     'is_correct': is_pred_correct,
                 })
+
+                # ── Save prediction to DB (mirrors Ch1 P2 + --review) ──
+                try:
+                    from Data.Access.db_helpers import save_prediction
+                    from Data.Access.league_db import update_prediction
+
+                    _match_data = {
+                        'fixture_id': fixture_id,
+                        'date': f_date or match_date,
+                        'match_time': f_time or '',
+                        'country_league': country_league,
+                        'home_team': h_name,
+                        'away_team': a_name,
+                        'home_team_id': home_tid,
+                        'away_team_id': away_tid,
+                        'match_link': f_link or '',
+                        'league_stage': '',
+                    }
+                    _pred_result = {
+                        'type': pred_str,
+                        'confidence': day_rec_candidates[-1]['confidence'],
+                        'reason': [f'RL Phase {active_phase} training prediction'],
+                        'xg_home': 0.0,
+                        'xg_away': 0.0,
+                        'btts': '',
+                        'over_2.5': '',
+                        'best_score': f'{h_score}-{a_score}',
+                        'top_scores': [],
+                        'home_tags': [],
+                        'away_tags': [],
+                        'h2h_tags': [],
+                        'standings_tags': [],
+                        'h2h_n': 0,
+                        'home_form_n': 0,
+                        'away_form_n': 0,
+                        'odds': '',
+                        'market_reliability': metrics.get('max_prob', 0) * 100,
+                        'recommendation_score': 0,
+                        'h2h_fixture_ids': [],
+                        'form_fixture_ids': [],
+                        'standings_snapshot': [],
+                    }
+                    save_prediction(_match_data, _pred_result)
+
+                    # Immediate outcome review (scores are known)
+                    update_prediction(conn, fixture_id, {
+                        'actual_score': f'{h_score}-{a_score}',
+                        'home_score': str(h_score),
+                        'away_score': str(a_score),
+                        'outcome_correct': outcome_result or '',
+                        'status': 'reviewed',
+                    })
+                except Exception as _save_err:
+                    pass  # Don't break training if save fails
 
             # ── Walk-forward Recommendation: select, evaluate, learn ──
             rec_day_acc = 0.0

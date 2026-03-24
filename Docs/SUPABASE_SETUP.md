@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS public.schedules (
     home_crest      TEXT,
     away_crest      TEXT,
     match_link      TEXT,
-    region_league   TEXT,
+    country_league   TEXT,
     last_updated    TIMESTAMPTZ DEFAULT now()
 );
 
@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS public.predictions (
     fixture_id               TEXT PRIMARY KEY,
     date                     TEXT,
     match_time               TEXT,
-    region_league            TEXT,
+    country_league            TEXT,
     home_team                TEXT,
     away_team                TEXT,
     home_team_id             TEXT,
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS public.live_scores (
     away_score TEXT,
     minute TEXT,
     status TEXT,
-    region_league TEXT,
+    country_league TEXT,
     match_link TEXT,
     timestamp TEXT,
     last_updated TIMESTAMPTZ DEFAULT now()
@@ -720,6 +720,22 @@ The Flutter app uses the **Anon Key** configured separately in `leobookapp/lib/c
 
 ---
 
-*Last updated: 2026-03-15 (v9.1 — v9.1 ALTERs section, Storage Buckets section, sync_schema.py canonical source reference, tables list updated)*
-*Previous: v8.2 — schema synced to sync_manager.SUPABASE_SCHEMA: JSONB types, INTEGER scores, extra column, standings VIEW fixed (2026-03-14)*
+*Last updated: 2026-03-24 (v9.2 — region_league→country_league rename, prediction save in --train-rl)*
+*Previous: v9.1 — v9.1 ALTERs section, Storage Buckets section, sync_schema.py canonical source reference, tables list updated (2026-03-15)*
 *LeoBook Engineering Team — Materialless LLC*
+
+---
+
+## v9.2 Migration: Rename `region_league` → `country_league`
+
+> **Run once** in the Supabase SQL Editor for existing deployments.
+> New deployments using the updated CREATE TABLE statements above do NOT need this.
+
+```sql
+-- v9.2: Rename region_league → country_league
+-- sync_schema.py sends country_league; column must match.
+ALTER TABLE public.schedules RENAME COLUMN region_league TO country_league;
+ALTER TABLE public.predictions RENAME COLUMN region_league TO country_league;
+ALTER TABLE public.live_scores RENAME COLUMN region_league TO country_league;
+ALTER TABLE public.standings RENAME COLUMN region_league TO country_league;
+```

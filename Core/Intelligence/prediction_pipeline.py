@@ -71,7 +71,7 @@ def get_weekly_fixtures(conn=None, days: int = 7) -> List[Dict]:
     """
     conn = conn or init_db()
     now = now_ng()
-    today_str = now.strftime("%d.%m.%Y")
+    today_str = now.strftime("%Y-%m-%d")  # Must match DB date format (YYYY-MM-DD)
 
     # Scan next 7 days (including today)
     date_strings = []
@@ -269,7 +269,7 @@ async def run_predictions(conn=None, fixtures: List[Dict] = None, scheduler=None
 
     # Filter out past matches (already started today)
     now = now_ng()
-    today_str = now.strftime("%d.%m.%Y")
+    today_str = now.strftime("%Y-%m-%d")  # Must match DB date format
     now_time = now.time()
 
     eligible = []

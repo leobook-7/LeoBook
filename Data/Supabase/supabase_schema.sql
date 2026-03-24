@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS public.predictions (
     fixture_id TEXT PRIMARY KEY,
     date TEXT,
     match_time TEXT,
-    region_league TEXT,
+    country_league TEXT,
     home_team TEXT,
     away_team TEXT,
     home_team_id TEXT,
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS public.schedules (
     fixture_id TEXT PRIMARY KEY,
     date TEXT,
     match_time TEXT,
-    region_league TEXT,
+    country_league TEXT,
     league_id TEXT,
     home_team TEXT,
     away_team TEXT,
@@ -266,7 +266,7 @@ CREATE TABLE IF NOT EXISTS public.standings (
     last_updated TIMESTAMP
     WITH
         TIME ZONE DEFAULT NOW (),
-        region_league TEXT
+        country_league TEXT
 );
 
 ALTER TABLE public.standings ENABLE ROW LEVEL SECURITY;
@@ -317,7 +317,7 @@ CREATE TABLE IF NOT EXISTS public.live_scores (
     away_score TEXT,
     minute TEXT,
     status TEXT,
-    region_league TEXT,
+    country_league TEXT,
     match_link TEXT,
     timestamp TIMESTAMP
     WITH

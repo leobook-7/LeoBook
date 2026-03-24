@@ -164,6 +164,13 @@ class ModelSync:
                                     file_options={"x-upsert": "true", "content-type": "application/octet-stream"},
                                 )
                                 pbar.update(len(chunk_data))
+                    
+                    # Clean up stale single-file version (prevents pull from
+                    # downloading the old unfragmented file instead of parts)
+                    try:
+                        self.supabase.storage.from_(BUCKET_NAME).remove([remote_path])
+                    except Exception:
+                        pass  # OK if it didn't exist
                 else:
                     # Normal Single File Upload (small enough)
                     with open(local_path, "rb") as f:
@@ -218,16 +225,22 @@ class ModelSync:
             print("  [ModelSync] No files found in remote bucket. Nothing to pull.")
             return
 
-        # Group parts. Part-based files will have entries for each chunk.
-        # We'll identify the "base" filename for reassembly.
+        # Group parts: part-based files keyed by base name, single files standalone.
+        # Parts ALWAYS win over a stale single-file entry with the same base name.
         file_map = {} # base_path -> list of part_paths or single path
         for rp in remote_paths:
             if ".part" in rp:
                 base = rp.split(".part")[0]
-                if base not in file_map: file_map[base] = []
+                if base not in file_map:
+                    file_map[base] = []
+                elif not any(".part" in x for x in file_map[base]):
+                    # Stale single-file entry exists; parts take priority
+                    file_map[base] = []
                 file_map[base].append(rp)
             else:
-                file_map[rp] = [rp]
+                # Only add single file if no parts already registered
+                if rp not in file_map or not any(".part" in x for x in file_map.get(rp, [])):
+                    file_map[rp] = [rp]
 
         os.makedirs(MODELS_DIR, exist_ok=True)
         os.makedirs(MODELS_DIR / "checkpoints", exist_ok=True)
